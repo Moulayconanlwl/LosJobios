@@ -1,0 +1,122 @@
+<!doctype html>
+<!--
+  A stand-in for a real career page, reproducing the patterns that actually
+  break autofill: labels attached four different ways, a radio group whose
+  question lives in a legend, a select with a placeholder option, a required
+  field marked only with an asterisk span, and a custom ARIA combobox.
+
+  Open this file directly in the browser to iterate on autofill without
+  touching a live job site.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Fixture — Senior Platform Engineer</title>
+    <style>
+      body { font: 15px/1.5 system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
+      .field { margin-bottom: 1.25rem; }
+      label { display: block; font-weight: 600; margin-bottom: .25rem; }
+      input, select, textarea { width: 100%; padding: .5rem; font: inherit; }
+      .req { color: #dc2626; }
+      fieldset { border: 1px solid #ddd; padding: 1rem; }
+      [role='listbox'] { border: 1px solid #ccc; list-style: none; padding: 0; margin: 0; }
+      [role='option'] { padding: .4rem .6rem; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h1>Senior Platform Engineer</h1>
+    <p class="job-description">
+      We are looking for an experienced platform engineer to work on our Kubernetes
+      infrastructure and developer tooling.
+    </p>
+
+    <form>
+      <!-- Label via for/id -->
+      <div class="field">
+        <label for="fn">First name <span class="req">*</span></label>
+        <input id="fn" name="first_name" type="text" required />
+      </div>
+
+      <!-- Label via wrapping element -->
+      <div class="field">
+        <label>Last name <span class="req">*</span><input name="lastName" type="text" required /></label>
+      </div>
+
+      <!-- Label only via autocomplete + placeholder -->
+      <div class="field">
+        <input name="contact_addr" type="email" autocomplete="email" placeholder="Email address" />
+      </div>
+
+      <!-- aria-label only -->
+      <div class="field">
+        <input aria-label="Phone number" name="p_1" type="tel" />
+      </div>
+
+      <div class="field">
+        <label for="li">LinkedIn profile</label>
+        <input id="li" type="url" />
+      </div>
+
+      <!-- Select with a placeholder option that must not count as answered -->
+      <div class="field">
+        <label for="yoe">Years of experience <span class="req">*</span></label>
+        <select id="yoe" required>
+          <option value="">Please select</option>
+          <option>0-2</option>
+          <option>3-5</option>
+          <option>6-10</option>
+          <option>10+</option>
+        </select>
+      </div>
+
+      <!-- Radio group: the question is in the legend, not on any input -->
+      <div class="field">
+        <fieldset>
+          <legend>Will you now or in the future require visa sponsorship?</legend>
+          <label><input type="radio" name="sponsor" value="y" /> Yes</label>
+          <label><input type="radio" name="sponsor" value="n" /> No</label>
+        </fieldset>
+      </div>
+
+      <div class="field">
+        <fieldset>
+          <legend>Are you legally authorized to work in the United States?</legend>
+          <label><input type="radio" name="auth" value="y" /> Yes</label>
+          <label><input type="radio" name="auth" value="n" /> No</label>
+        </fieldset>
+      </div>
+
+      <!-- Custom combobox, not a native select -->
+      <div class="field">
+        <span id="loc-label">Country</span>
+        <div role="combobox" aria-labelledby="loc-label" aria-controls="loc-list" aria-expanded="false" tabindex="0">
+          Select a country
+        </div>
+        <ul id="loc-list" role="listbox" hidden>
+          <li role="option">United States</li>
+          <li role="option">United Kingdom</li>
+          <li role="option">Germany</li>
+        </ul>
+      </div>
+
+      <div class="field">
+        <label for="cv">Resume / CV</label>
+        <input id="cv" type="file" accept=".pdf" />
+      </div>
+
+      <div class="field">
+        <label for="cover">Cover letter</label>
+        <textarea id="cover" rows="6"></textarea>
+      </div>
+
+      <div class="field">
+        <label>
+          <input type="checkbox" name="tos" />
+          I agree to the processing of my personal data
+        </label>
+      </div>
+
+      <button type="submit">Submit application</button>
+    </form>
+  </body>
+</html>
