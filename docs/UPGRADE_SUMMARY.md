@@ -26,24 +26,14 @@ every feature was built independently from observed behaviour.
 
 ## Licence and attribution
 
-| | |
-|---|---|
-| Reference licence | **PolyForm Noncommercial 1.0.0** (`NOASSERTION` to GitHub) |
-| This project | AGPL-3.0 per README |
-| Compatible? | **No** |
-| Code copied | **None** |
-| Attribution owed | **None**, because nothing was used |
+**Superseded.** The Indeed automation was later *ported* from the reference
+implementation at the repository owner's direction, and the README's AGPL-3.0
+declaration was removed to resolve the conflict. See
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for the current position, the
+required notice, and the obligations that come with it.
 
-AGPL requires the combined work be distributable with freedom to use commercially;
-PolyForm Noncommercial forbids commercial use. The two cannot both be satisfied by one
-distributed work, and attribution does not cure a conflict over rights granted onward.
-Full reasoning in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
-
-**Action for the repository owner:** the README declares AGPL-3.0 but there is no
-`LICENSE` file, so GitHub reports the project as unlicensed and recipients have no
-express grant. Adding the AGPL-3.0 text as `LICENSE` would make the stated intent
-effective. Left undone deliberately — adding a licence file is a legal declaration, not
-a code change.
+The summary below describes the earlier, independently-implemented work and remains
+accurate for the other nine features.
 
 ## Reference capabilities reviewed and declined
 

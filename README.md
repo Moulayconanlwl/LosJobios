@@ -259,4 +259,14 @@ What automated tests can't reach: **every site adapter's selectors** — LinkedI
 
 ## License
 
-AGPL-3.0
+None yet — this is still in development and not licensed for distribution.
+
+Parts of the job-board automation were ported from
+[autoapplycv](https://github.com/tmwclaxton/autoapplycv), which is licensed
+PolyForm Noncommercial 1.0.0 and carries:
+
+> Required Notice: Copyright AutoCVApply (https://autocvapply.com)
+
+That licence permits noncommercial use, which is what this is. Before
+distributing this to anyone, settle the licensing — PolyForm's noncommercial
+restriction follows the ported code into whatever this becomes.

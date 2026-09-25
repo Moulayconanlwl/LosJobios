@@ -81,7 +81,7 @@ describe('isApplyContinuation', () => {
     for (const url of [
       'https://smartapply.indeed.com/beta/indeedapply/form/resume',
       'https://apply.indeed.com/indeedapply/form',
-      'https://fr.indeed.com/applystart?jk=abc123',
+      'https://fr.indeed.com/viewjob/indeedapply/form',
     ]) {
       expect(isApplyContinuation(url), url).toBe(true)
     }

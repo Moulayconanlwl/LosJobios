@@ -88,6 +88,12 @@ export function detectJobBoard(url: string | null | undefined): JobBoard | null 
  */
 export function isApplyContinuation(url: string | null | undefined): boolean {
   if (!url) return false
+
+  // Indeed's search page keeps a hidden smartapply iframe warmed up. It is not
+  // an application in progress, and reading it as one makes an ordinary search
+  // look like a mid-apply handoff.
+  if (/preloadresumeapply/i.test(url)) return false
+
   try {
     const parsed = new URL(url)
     if (parsed.protocol !== 'https:') return false
@@ -98,7 +104,7 @@ export function isApplyContinuation(url: string | null | undefined): boolean {
     // The hosted form lives on its own subdomain; older flows served it from
     // a path on the country site.
     if (/^(smartapply|apply)\./.test(parsed.hostname)) return true
-    return /indeedapply|applystart|\/apply\//.test(parsed.pathname)
+    return /indeedapply/i.test(parsed.pathname) || /indeedapply/i.test(parsed.search)
   } catch {
     return false
   }

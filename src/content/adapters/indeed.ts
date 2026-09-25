@@ -12,6 +12,22 @@ import {
   text,
   waitFor,
 } from '../dom/query'
+import {
+  CARD_SELECTORS,
+  badgeRootOf,
+  cardAlreadyApplied,
+  cardApplyKind,
+  challengePresent,
+  confirmationPresent,
+  controlLabel,
+  isAppliedLabel,
+  isApplyFlowUrl,
+  isContinueLabel,
+  isSubmitLabel,
+  jobIdFromCard,
+  jobIdFromUrl,
+  securityCheckpointPresent,
+} from './indeed-dom'
 import type { ApplyContext, ApplyCounts, SiteAdapter } from './types'
 
 /**
@@ -37,23 +53,6 @@ import type { ApplyContext, ApplyCounts, SiteAdapter } from './types'
 /** A hard ceiling on wizard steps, so a loop in the UI can't become a loop here. */
 const MAX_STEPS = 12
 
-/**
- * Card selectors across the layouts Indeed serves.
- *
- * `data-jk` is the load-bearing one: it is the job key Indeed itself uses in
- * every URL and API call, and it has outlived several full redesigns of the
- * class names around it. The rest are there so a card still reads when the
- * attribute moves to a wrapper we didn't expect.
- */
-const JOB_CARD_SELECTORS = [
-  '.job_seen_beacon',
-  '#mosaic-provider-jobcards li',
-  '.jobsearch-ResultsList > li',
-  'div.cardOutline',
-  'li.result',
-  'div[data-jk]',
-  'a[data-jk]',
-]
 
 /**
  * Button and status wording, per locale.
@@ -169,39 +168,13 @@ const COMPANY_SELECTORS = [
 ]
 
 /**
- * The hosted apply form, in the places it has lived.
- *
- * Kept as a path/host test rather than a markup test because it is also what
- * the background matches on to decide a navigation was a handoff rather than
- * the user wandering off — and it has to give the same answer in both places.
+ * Re-exported so the background can ask the same question without importing
+ * the whole adapter. The background has to decide whether a navigation was a
+ * mid-application handoff, and it must get the same answer as the page does.
  */
-export function isIndeedApplyUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url)
-    if (/^smartapply\.indeed\.com$/.test(parsed.hostname)) return true
-    if (/^apply\.indeed\.com$/.test(parsed.hostname)) return true
-    return /indeedapply|\/applystart|\/apply\//.test(parsed.pathname)
-  } catch {
-    return false
-  }
-}
+export { isApplyFlowUrl as isIndeedApplyUrl }
 
-/**
- * A human-verification challenge.
- *
- * Nothing here attempts to answer one. A captcha is a statement that a human
- * is required, so the run stops and hands the tab back — which is also the
- * only behaviour that doesn't quietly burn the rest of the queue against a
- * wall it can't pass.
- */
-const CHALLENGE_SELECTORS = [
-  'iframe[src*="recaptcha"]',
-  'iframe[src*="hcaptcha"]',
-  'iframe[src*="challenges.cloudflare.com"]',
-  '#challenge-running',
-  '[data-testid="captcha"]',
-  'form[action*="captcha"]',
-]
+
 
 type StepAction =
   | { kind: 'continue'; button: HTMLElement }
@@ -232,10 +205,22 @@ export class IndeedAdapter implements SiteAdapter {
     const jobs: JobRef[] = []
     const seen = new Set<string>()
 
-    for (const card of pickAll(JOB_CARD_SELECTORS, document, isDisplayed)) {
-      const externalId = this.jobKeyFrom(card)
+    for (const card of pickAll(CARD_SELECTORS, document, isDisplayed)) {
+      const externalId = jobIdFromCard(card)
       if (!externalId || seen.has(externalId)) continue
       seen.add(externalId)
+
+      /*
+       * Triage from the card, before anything is opened.
+       *
+       * An off-site apply is one this must never drive unattended, and a job
+       * already applied to is one the employer should not hear about twice.
+       * Discovering either *after* navigating to the posting costs the
+       * navigation and, on Indeed, a page load each way.
+       */
+      const badges = badgeRootOf(card)
+      if (cardApplyKind(badges) === false) continue
+      if (ctx.settings.skipAlreadyApplied && cardAlreadyApplied(badges)) continue
 
       const job = this.readCard(card, externalId)
       if (!this.passesFilters(job, ctx)) continue
@@ -251,7 +236,7 @@ export class IndeedAdapter implements SiteAdapter {
     if (this.challengePresent()) {
       return 'Indeed is showing a human-verification check. Clear it yourself, then start the run again.'
     }
-    if (pickAll(JOB_CARD_SELECTORS, document, isDisplayed).length === 0) {
+    if (pickAll(CARD_SELECTORS, document, isDisplayed).length === 0) {
       return 'No job cards were found on this page at all — open an Indeed search (indeed.com/jobs?q=…) and try again.'
     }
     return 'Jobs were found on the page, but all of them were filtered out by your settings or already applied to.'
@@ -268,29 +253,10 @@ export class IndeedAdapter implements SiteAdapter {
     // every real element in it. A visibility test that needs a painted box
     // means no frame ever claims, and every command goes to frame 0.
     return (
-      pickAll(JOB_CARD_SELECTORS, document, isDisplayed).length > 0 ||
+      pickAll(CARD_SELECTORS, document, isDisplayed).length > 0 ||
       Boolean(pick(DESCRIPTION_SELECTORS, document, isDisplayed)) ||
       this.onApplyForm()
     )
-  }
-
-  /**
-   * The job key. Indeed puts it on the card, on the title link, and in every
-   * URL that references the posting — so this tries all three before giving
-   * up rather than depending on any one of them surviving a redesign.
-   */
-  private jobKeyFrom(card: HTMLElement): string {
-    const direct =
-      card.getAttribute('data-jk') ??
-      card.querySelector('[data-jk]')?.getAttribute('data-jk') ??
-      card.closest('[data-jk]')?.getAttribute('data-jk')
-    if (direct) return direct
-
-    const href =
-      card.querySelector('a[href*="jk="]')?.getAttribute('href') ??
-      card.getAttribute('href') ??
-      ''
-    return /[?&]jk=([a-z0-9]+)/i.exec(href)?.[1] ?? ''
   }
 
   private readCard(card: HTMLElement, externalId: string): JobRef {
@@ -298,12 +264,22 @@ export class IndeedAdapter implements SiteAdapter {
     // a card below the fold in a tab that was never painted reports a
     // zero-size box for every element inside it.
     const title = pick(
-      ['h2.jobTitle span[title]', '[data-testid="jobTitle"]', 'h2.jobTitle', '.jobTitle', 'a.jcs-JobTitle'],
+      [
+        'h2.jobTitle span[title]',
+        'h2.jobTitle a',
+        '[data-testid="job-title"] a',
+        'a[data-jk] span',
+        '.jobTitle',
+      ],
       card,
       isDisplayed,
     )
     const company = pick(
-      ['[data-testid="company-name"]', '.companyName', 'span.companyName', '[data-testid="company_name"]'],
+      [
+        '[data-testid="company-name"]',
+        '[data-testid="attribute_snippet_testid"]',
+        '.companyName',
+      ],
       card,
       isDisplayed,
     )
@@ -452,7 +428,10 @@ export class IndeedAdapter implements SiteAdapter {
       isDisplayed,
     )
 
-    const key = /[?&]jk=([a-z0-9]+)/i.exec(location.href)?.[1] ?? ''
+    // Reads `vjk` as well as `jk`: on the search page, selecting a job puts
+    // its id in `vjk` while `jk` still names whatever was opened first, so
+    // reading only `jk` tags the posting with the wrong job.
+    const key = jobIdFromUrl(location.href) ?? ''
 
     return {
       externalId: key,
@@ -645,7 +624,11 @@ export class IndeedAdapter implements SiteAdapter {
 
   /** Are we looking at the hosted apply form, in any of the shapes it takes? */
   private onApplyForm(): boolean {
-    if (isIndeedApplyUrl(location.href)) return true
+    // The URL test carries the `preloadresumeapply` exclusion: Indeed's search
+    // page keeps a hidden smartapply iframe warmed up, and without that
+    // exclusion an ordinary search reads as an application in progress.
+    if (isApplyFlowUrl(location.href)) return true
+    if (/preloadresumeapply/i.test(location.href)) return false
     return Boolean(this.formRoot())
   }
 
@@ -674,22 +657,80 @@ export class IndeedAdapter implements SiteAdapter {
     return hasQuestions ? container : null
   }
 
-  /** Which button moves us forward. Submit wins, then Review, then Continue. */
+  /**
+   * Which button moves us forward — and, far more importantly, which one ends
+   * the application.
+   *
+   * On Indeed's wizard **both are `type="submit"`**: Continue submits the
+   * step's own form, Submit sends the application. So the element's type says
+   * nothing, and only the label tells them apart.
+   *
+   * Two rules make the failure modes asymmetric, deliberately:
+   *
+   *   1. Submit is decided by label, and a label containing "continue" or
+   *      "next" is never a submit however it is marked up.
+   *   2. A `type="submit"` is only accepted as *Continue* once its label has
+   *      been read and confirmed to be a continue label and not a submit one.
+   *      Anything unrecognised is reported as `none`, which stops the run.
+   *
+   * Stopping on an unknown button costs one abandoned application. Guessing
+   * "continue" and clicking sends a real one — during a dry run, which is
+   * supposed to be the setting that cannot do that.
+   */
   private nextAction(root: HTMLElement): StepAction {
-    const submit =
-      pick(
-        ['[data-testid="submit-application-button"]', 'button[data-testid*="submit" i]'],
-        root,
-      ) ?? findByText(TEXT.submit, ['button'], root)
-    if (submit) return { kind: 'submit', button: submit }
+    /*
+     * Scoped to the form first, then widened to the document.
+     *
+     * Indeed renders the step's buttons in a footer that is frequently a
+     * *sibling* of the form rather than inside it, so a form-only search finds
+     * no button at all and every application fails as "stuck". Searching the
+     * form first still keeps its own buttons ahead of anything in the page
+     * chrome.
+     */
+    const selectors = [
+      'button',
+      '[role="button"]',
+      'input[type="submit"]',
+      'input[type="button"]',
+      'a[role="button"]',
+    ]
 
-    const review = findByText(TEXT.review, ['button'], root)
-    if (review) return { kind: 'review', button: review }
+    const seen = new Set<HTMLElement>()
+    const controls = [...pickAll(selectors, root, isDisplayed), ...pickAll(selectors, document, isDisplayed)]
+      .filter((el) => {
+        if (seen.has(el)) return false
+        seen.add(el)
+        return !(el as HTMLButtonElement).disabled
+      })
 
-    const next =
-      pick(['[data-testid="continue-button"]', 'button[type="submit"]'], root) ??
-      findByText(TEXT.continue, ['button'], root)
-    if (next) return { kind: 'continue', button: next }
+    // Submit first, and by label only.
+    for (const control of controls) {
+      if (isSubmitLabel(controlLabel(control))) return { kind: 'submit', button: control }
+    }
+
+    // Indeed's own marker, but still refused if it reads as a step button.
+    const marked = controls.find((el) =>
+      el.matches('[data-testid="submit-application-button"], [name="submit-application"]'),
+    )
+    if (marked && !isContinueLabel(controlLabel(marked))) {
+      return { kind: 'submit', button: marked }
+    }
+
+    for (const testId of [
+      'continue-button',
+      'save-and-continue-button',
+      'apply-button-continue',
+      'application-module-continue-button',
+    ]) {
+      const button = controls.find((el) => el.matches(`[data-testid="${testId}"]`))
+      if (button) return { kind: 'continue', button }
+    }
+
+    for (const control of controls) {
+      const label = controlLabel(control)
+      if (!label || isSubmitLabel(label)) continue
+      if (isContinueLabel(label)) return { kind: 'continue', button: control }
+    }
 
     return { kind: 'none' }
   }
@@ -754,9 +795,7 @@ export class IndeedAdapter implements SiteAdapter {
   }
 
   private confirmationOnScreen(): boolean {
-    if (/post-apply|applied|confirmation/i.test(location.pathname)) return true
-    const body = normalizeText(document.body?.innerText || document.body?.textContent).toLowerCase()
-    return TEXT.sent.some((phrase) => body.includes(phrase))
+    return confirmationPresent(document)
   }
 
   private alreadyApplied(): boolean {
@@ -776,8 +815,7 @@ export class IndeedAdapter implements SiteAdapter {
     // has already applied to, which is worse than failing.
     const button = pick(APPLY_BUTTON_SELECTORS, document, isDisplayed)
     if (!button) return false
-    const label = (text(button) || button.getAttribute('aria-label') || '').toLowerCase()
-    return TEXT.applied.some((word) => label.includes(word))
+    return isAppliedLabel(text(button), button.getAttribute('aria-label') ?? '')
   }
 
   /**
@@ -791,8 +829,12 @@ export class IndeedAdapter implements SiteAdapter {
     })
   }
 
+  /**
+   * A challenge, or a site-wide interstitial. Detection only — nothing here
+   * attempts to answer one.
+   */
   private challengePresent(): boolean {
-    return CHALLENGE_SELECTORS.some((selector) => Boolean(document.querySelector(selector)))
+    return challengePresent(document) || securityCheckpointPresent(document)
   }
 
   // -------------------------------------------------------------------------
