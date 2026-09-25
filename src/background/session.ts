@@ -5,6 +5,7 @@ import {
   addApplication,
   addScrapedJobs,
   appliedExternalIds,
+  logActivity,
   getRunState,
   getSettings,
   patchRunState,
@@ -161,6 +162,12 @@ export async function startRun(): Promise<Ack> {
     queue: jobs,
     cursor: 0,
     lastMessage: `Queued ${jobs.length} jobs.`,
+  })
+
+  void logActivity({
+    kind: 'run-started',
+    summary: `Queued ${jobs.length} job${jobs.length === 1 ? '' : 's'} from a LinkedIn search.`,
+    site: 'linkedin.com',
   })
 
   void ensureLoop()
@@ -406,8 +413,21 @@ async function recordApplication(
     questionsAnswered,
     aiAnswersUsed,
     notes: '',
+    followUpOn: '',
+    nextAction: '',
   }
   await addApplication(application)
+
+  // Labels and counts only — never the answers that were given.
+  void logActivity({
+    kind: 'applied',
+    summary: dryRun
+      ? `Dry run completed, nothing submitted. ${questionsAnswered} field(s) filled.`
+      : `Application submitted. ${questionsAnswered} field(s) filled, ${aiAnswersUsed} AI-drafted.`,
+    jobTitle: job.title,
+    company: job.company,
+    site: 'linkedin.com',
+  })
 }
 
 function describeError(err: unknown): string {

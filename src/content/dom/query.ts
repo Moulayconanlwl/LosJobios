@@ -51,6 +51,58 @@ export function isInteractable(el: Element): boolean {
 /** Which visibility bar an element has to clear to be picked. */
 export type Predicate = (el: Element) => el is HTMLElement
 
+/**
+ * Every element matching `selector` under `root`, descending through open
+ * shadow roots and same-origin iframes.
+ *
+ * `querySelectorAll` stops dead at a shadow boundary, which is why modern ATS
+ * forms — Workday, Ashby, anything built on web components — look to a naive
+ * content script like a page with no fields on it at all. The walk is
+ * deliberately conservative: a *closed* root is left closed rather than
+ * prised open, and a cross-origin iframe throws on access and is skipped, so
+ * this never reaches anywhere the page hasn't already made reachable.
+ */
+export function deepQueryAll(selector: string, root: Root = document): Element[] {
+  const out: Element[] = []
+  const seen = new Set<Element>()
+  // Iterative rather than recursive: a deeply nested component tree should
+  // widen this list, never the call stack.
+  const queue: Root[] = [root]
+
+  while (queue.length) {
+    const current = queue.shift()
+    if (!current) continue
+
+    try {
+      for (const el of current.querySelectorAll(selector)) {
+        if (!seen.has(el)) {
+          seen.add(el)
+          out.push(el)
+        }
+      }
+    } catch {
+      // A malformed selector shouldn't kill the whole walk.
+    }
+
+    try {
+      for (const el of current.querySelectorAll('*')) {
+        const shadow = (el as HTMLElement).shadowRoot
+        if (shadow) queue.push(shadow)
+
+        if (el instanceof HTMLIFrameElement) {
+          // Throws on a cross-origin frame, which is the correct outcome.
+          const doc = el.contentDocument
+          if (doc) queue.push(doc)
+        }
+      }
+    } catch {
+      // Same-origin policy did its job; carry on with what we can see.
+    }
+  }
+
+  return out
+}
+
 /** First match across a list of candidate CSS selectors, in priority order. */
 export function pick(
   selectors: string[],
@@ -58,13 +110,7 @@ export function pick(
   accept: Predicate = isVisible,
 ): HTMLElement | null {
   for (const selector of selectors) {
-    let matches: NodeListOf<Element>
-    try {
-      matches = root.querySelectorAll(selector)
-    } catch {
-      continue // a bad selector shouldn't kill the whole lookup
-    }
-    for (const el of matches) {
+    for (const el of deepQueryAll(selector, root)) {
       if (accept(el)) return el
     }
   }
@@ -80,13 +126,7 @@ export function pickAll(
   const seen = new Set<Element>()
   const out: HTMLElement[] = []
   for (const selector of selectors) {
-    let matches: NodeListOf<Element>
-    try {
-      matches = root.querySelectorAll(selector)
-    } catch {
-      continue
-    }
-    for (const el of matches) {
+    for (const el of deepQueryAll(selector, root)) {
       if (!seen.has(el) && accept(el)) {
         seen.add(el)
         out.push(el)
@@ -158,15 +198,32 @@ export function findByText(
  * precedence order browsers use. This is the single most reliable signal for
  * working out what a field is asking for.
  */
+/**
+ * The tree an element's id references resolve in.
+ *
+ * Ids are scoped to their shadow root, not to the document: a field inside a
+ * web component is labelled by a `<label for>` that is also inside that
+ * component, and looking it up on `document` finds nothing. Getting this
+ * wrong means shadow-DOM fields are detected but arrive unlabelled, which is
+ * worse than not detecting them — an unlabelled field can't be classified,
+ * so it silently becomes an unanswered question.
+ */
+function rootOf(el: Element): Document | ShadowRoot {
+  const root = el.getRootNode()
+  return root instanceof ShadowRoot || root instanceof Document ? root : document
+}
+
 export function accessibleName(el: Element): string {
   const ariaLabel = normalizeText(el.getAttribute('aria-label'))
   if (ariaLabel) return ariaLabel
+
+  const scope = rootOf(el)
 
   const labelledBy = el.getAttribute('aria-labelledby')
   if (labelledBy) {
     const parts = labelledBy
       .split(/\s+/)
-      .map((id) => document.getElementById(id))
+      .map((id) => scope.getElementById(id))
       .filter((n): n is HTMLElement => Boolean(n))
       .map((n) => text(n))
       .filter(Boolean)
@@ -176,7 +233,7 @@ export function accessibleName(el: Element): string {
   if (el.id) {
     // CSS.escape guards against ids containing characters that break selectors,
     // which Workday and Greenhouse both produce.
-    const forLabel = document.querySelector(`label[for="${CSS.escape(el.id)}"]`)
+    const forLabel = scope.querySelector(`label[for="${CSS.escape(el.id)}"]`)
     if (forLabel) {
       const label = text(forLabel)
       if (label) return label

@@ -11,7 +11,11 @@ export default defineManifest({
   // Deliberately narrow. Universal autofill runs through activeTab + a user
   // gesture rather than <all_urls>, so the extension never has standing access
   // to every site you visit.
-  permissions: ['storage', 'tabs', 'scripting', 'alarms', 'activeTab'],
+  // `sidePanel` is a UI-surface permission: it lets the extension own a panel
+  // beside the page. It grants no access to page content or user data — the
+  // review flow simply cannot live in a popup, which closes the moment you
+  // click the form you are trying to check.
+  permissions: ['storage', 'tabs', 'scripting', 'alarms', 'activeTab', 'sidePanel'],
   host_permissions: ['https://www.linkedin.com/*'],
 
   // Requested at runtime only when you turn on AI question answering, so the
@@ -28,6 +32,10 @@ export default defineManifest({
   },
 
   options_page: 'src/ui/options/index.html',
+
+  side_panel: {
+    default_path: 'src/ui/sidepanel/index.html',
+  },
 
   background: {
     service_worker: 'src/background/index.ts',

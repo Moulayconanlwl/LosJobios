@@ -18,6 +18,8 @@ function app(patch: Partial<Application> = {}): Application {
     questionsAnswered: 3,
     aiAnswersUsed: 1,
     notes: '',
+    followUpOn: '',
+    nextAction: '',
     ...patch,
   }
 }

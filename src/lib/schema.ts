@@ -143,6 +143,8 @@ export const settingsSchema = z.object({
 
   ai: aiSettingsSchema.default({}),
   latex: latexSettingsSchema.default({}),
+  /** 'auto' follows the browser; anything else is a deliberate choice. */
+  locale: z.enum(['auto', 'en', 'fr']).default('auto'),
 })
 
 export type Settings = z.infer<typeof settingsSchema>
@@ -180,6 +182,14 @@ export const applicationSchema = z.object({
   questionsAnswered: z.number().default(0),
   aiAnswersUsed: z.number().default(0),
   notes: z.string().default(''),
+  /**
+   * Follow-up date as an ISO day (YYYY-MM-DD), empty when none is set.
+   * A plain day rather than a timestamp: "chase them on the 5th" is a date,
+   * and storing a time would invent a precision the user never gave.
+   */
+  followUpOn: z.string().default(''),
+  /** What to actually do on that date. Free text; the user's own words. */
+  nextAction: z.string().default(''),
 })
 
 export type Application = z.infer<typeof applicationSchema>

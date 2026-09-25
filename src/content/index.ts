@@ -5,7 +5,11 @@ import { waitFor } from './dom/query'
 import { LinkedInAdapter } from './adapters/linkedin'
 import { UniversalAdapter } from './adapters/universal'
 import type { ApplyContext, SiteAdapter } from './adapters/types'
+import { collectFields } from './fields'
 import { hideOverlay, showOverlay } from './overlay'
+import { applyPlan, draftOpenQuestions, planFields } from './plan'
+import { describeSite } from './site-report'
+import { collectValidationErrors } from './validation'
 
 /**
  * Content script entry point.
@@ -203,6 +207,52 @@ registerHandlers({
       description: description ?? adapter.jobDescription(),
       url: location.href,
     }
+  },
+
+  'cs/site-report': () => describeSite(adapter),
+
+  /**
+   * The read-only half of filling: work out what *would* go where, and hand
+   * it back for review. Nothing is written to the page by this.
+   */
+  'cs/plan-fields': async () => {
+    resetController()
+    const ctx = await buildContext(null, true)
+    const fields = collectFields(document)
+    const plan = await planFields(fields, ctx)
+
+    showOverlay(
+      `${plan.proposals.length} field${plan.proposals.length === 1 ? '' : 's'} ready for review`,
+      'Nothing has been filled yet.',
+    )
+    setTimeout(hideOverlay, 4000)
+
+    return { ...plan, site: describeSite(adapter) }
+  },
+
+  /** Write back exactly what came out of the review, and nothing else. */
+  'cs/apply-plan': async ({ decisions }) => {
+    resetController()
+    const ctx = await buildContext(null, true)
+    const result = await applyPlan(decisions, collectFields(document), ctx)
+
+    // The form may have rejected something the moment it was written. Its own
+    // wording is more useful than anything this extension could infer.
+    const errors = collectValidationErrors()
+
+    showOverlay(
+      `Filled ${result.filled} field${result.filled === 1 ? '' : 's'}.`,
+      result.skipped.length ? `Left alone: ${result.skipped.length}` : '',
+    )
+    setTimeout(hideOverlay, 5000)
+
+    return { ...result, errors }
+  },
+
+  'cs/draft-answers': async () => {
+    resetController()
+    const ctx = await buildContext(null, true)
+    return { proposals: await draftOpenQuestions(collectFields(document), ctx) }
   },
 
   'cs/abort': () => {

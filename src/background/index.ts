@@ -5,6 +5,7 @@ import {
   addScrapedJobs,
   getRunState,
   getSavedJobs,
+  logActivity,
   patchRunState,
   putSavedJob,
   runMigrations,
@@ -33,6 +34,40 @@ import {
  */
 
 const DASHBOARD_PAGE = 'src/ui/dashboard/index.html'
+
+/** Host only — a full URL in a log would carry query parameters with it. */
+function hostOf(url: string | undefined): string {
+  if (!url) return ''
+  try {
+    return new URL(url).hostname
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Get a live content script in the tab the user is looking at, and the frame
+ * worth addressing in it.
+ *
+ * Every side-panel action needs the same four steps, and each has its own
+ * failure the panel should be able to explain rather than just fail on.
+ */
+async function reachActiveTab(): Promise<
+  { tabId: number; frameId: number | undefined } | { error: string }
+> {
+  const tab = await getActiveTab()
+  if (!tab?.id) return { error: 'No active tab.' }
+
+  if (!isInjectable(tab.url)) {
+    return { error: 'This kind of page can’t be read — open the application form itself.' }
+  }
+
+  if (!(await ensureContentScript(tab.id))) {
+    return { error: 'Could not reach the page. Reload it and try again.' }
+  }
+
+  return { tabId: tab.id, frameId: await resolveContentFrame(tab.id) }
+}
 
 /** Let a freshly created tab finish loading before anything is asked of it. */
 async function waitForTabLoad(tabId: number, timeoutMs = 20_000): Promise<void> {
@@ -215,6 +250,58 @@ registerHandlers({
     return { ok: true as const, job }
   },
 
+  'panel/site-report': async () => {
+    const target = await reachActiveTab()
+    if ('error' in target) return { ok: false as const, error: target.error }
+
+    const site = await sendToTab(target.tabId, 'cs/site-report', {}, { frameId: target.frameId })
+    return { ok: true as const, site }
+  },
+
+  'panel/plan-fields': async () => {
+    const target = await reachActiveTab()
+    if ('error' in target) return { ok: false as const, error: target.error }
+
+    const plan = await sendToTab(target.tabId, 'cs/plan-fields', {}, { frameId: target.frameId })
+    return { ok: true as const, plan }
+  },
+
+  'panel/draft-answers': async () => {
+    const target = await reachActiveTab()
+    if ('error' in target) return { ok: false as const, error: target.error }
+
+    const { proposals } = await sendToTab(
+      target.tabId,
+      'cs/draft-answers',
+      {},
+      { frameId: target.frameId },
+    )
+    return { ok: true as const, proposals }
+  },
+
+  'panel/apply-plan': async ({ decisions }) => {
+    const target = await reachActiveTab()
+    if ('error' in target) return { ok: false as const, error: target.error }
+
+    const result = await sendToTab(
+      target.tabId,
+      'cs/apply-plan',
+      { decisions },
+      { frameId: target.frameId },
+    )
+
+    // The labels of what was filled, never the values — see lib/activity.ts.
+    void logActivity({
+      kind: 'fields-filled',
+      summary: `Filled ${result.filled} reviewed field${result.filled === 1 ? '' : 's'}${
+        result.skipped.length ? `, left ${result.skipped.length} alone` : ''
+      }.`,
+      site: hostOf((await getActiveTab())?.url),
+    })
+
+    return { ok: true as const, result }
+  },
+
   /**
    * Scrape the job list the user is looking at into the saved-jobs library,
    * without applying to anything. This is how a posting gets into the
@@ -364,6 +451,27 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.runtime.onStartup.addListener(() => {
   void ensureLoop()
+})
+
+/**
+ * The panel is opened from the popup rather than by replacing it.
+ *
+ * `chrome.sidePanel.open` has to be called inside a user gesture, and the
+ * popup click is one. Keeping the popup as the run cockpit and the panel as
+ * the review workspace means neither surface has to be both.
+ */
+registerHandlers({
+  'panel/open': async (_, sender) => {
+    try {
+      const tabId = sender.tab?.id ?? (await getActiveTab())?.id
+      if (tabId === undefined) return { ok: false as const, error: 'No active tab.' }
+
+      await chrome.sidePanel.open({ tabId })
+      return { ok: true as const }
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) }
+    }
+  },
 })
 
 installWatchdog()

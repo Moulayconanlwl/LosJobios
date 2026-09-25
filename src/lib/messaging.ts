@@ -1,3 +1,4 @@
+import type { ValidationError } from '@/content/validation'
 import type { CapturedJob, FieldKind, JobRef, PendingQuestion, RunState } from './schema'
 
 /**
@@ -39,6 +40,49 @@ export type AnswerResponse = {
   confidence: number
 }
 
+/** Where a proposed value came from, which is what makes it reviewable. */
+export type FieldSource = AnswerResponse['source'] | 'profile'
+
+/**
+ * One field the extension is offering to fill, before anything is written.
+ *
+ * `selected` is a proposal, not a decision — the user's edits come back in
+ * the same shape, and only what they leave selected is ever written.
+ */
+export type FieldProposal = {
+  /** Round-trip handle; the page element is found again by this. */
+  handle: string
+  label: string
+  kind: FieldKind
+  required: boolean
+  /** Non-empty for selects and radio groups, so the review can constrain edits. */
+  options: string[]
+  value: string
+  source: FieldSource
+  confidence: number
+  /** Plain-language justification shown beside the value. */
+  reason: string
+  selected: boolean
+  /** A file attachment rather than a typed value. */
+  attachment: boolean
+}
+
+export type FieldPlanReport = {
+  proposals: FieldProposal[]
+  /** Fields left alone because they already held a value. */
+  skipped: number
+  site: SiteReport
+}
+
+/** What the extension can actually do on the page in front of the user. */
+export type SiteReport = {
+  kind: 'known-ats' | 'generic-form' | 'no-form'
+  /** Human-readable site name, e.g. "LinkedIn". */
+  site: string
+  fieldCount: number
+  message: string
+}
+
 export type MessageMap = {
   // ---- UI → background -------------------------------------------------
   'run/start': { req: Record<string, never>; res: Ack }
@@ -56,6 +100,22 @@ export type MessageMap = {
    * `activeTab` needs on a site we hold no standing permission for.
    */
   'ats/capture-job': { req: Record<string, never>; res: Ack & { job?: CapturedJob } }
+  /**
+   * Side panel → background → content, for the review flow. Each one targets
+   * whatever tab the panel is looking at, so the panel never needs to know
+   * about tabs or frames.
+   */
+  /** Open the review panel beside the current tab. Needs a user gesture. */
+  'panel/open': { req: Record<string, never>; res: Ack }
+  'panel/site-report': { req: Record<string, never>; res: Ack & { site?: SiteReport } }
+  'panel/plan-fields': { req: Record<string, never>; res: Ack & { plan?: FieldPlanReport } }
+  'panel/draft-answers': { req: Record<string, never>; res: Ack & { proposals?: FieldProposal[] } }
+  'panel/apply-plan': {
+    req: { decisions: FieldProposal[] }
+    res: Ack & {
+      result?: { filled: number; failed: number; skipped: string[]; errors: ValidationError[] }
+    }
+  }
   /** Scrape the job list on the current page into the saved-jobs library. */
   'jobs/scan-active-tab': { req: Record<string, never>; res: Ack & { added?: number; found?: number } }
   /**
@@ -73,6 +133,20 @@ export type MessageMap = {
   }
   'cs/apply-job': { req: { job: JobRef; dryRun: boolean }; res: ApplyOutcome }
   'cs/autofill-page': { req: Record<string, never>; res: AutofillReport }
+  /**
+   * Work out what *would* be filled, and report it for review. Writes
+   * nothing — this is the read-only half of the fill flow.
+   */
+  'cs/plan-fields': { req: Record<string, never>; res: FieldPlanReport }
+  /** Write back exactly the proposals the user left selected. */
+  'cs/apply-plan': {
+    req: { decisions: FieldProposal[] }
+    res: { filled: number; failed: number; skipped: string[]; errors: ValidationError[] }
+  }
+  /** Draft answers for the free-text questions nothing else could answer. */
+  'cs/draft-answers': { req: Record<string, never>; res: { proposals: FieldProposal[] } }
+  /** What kind of page is this, and what is supported here? */
+  'cs/site-report': { req: Record<string, never>; res: SiteReport }
   /** What job is this page about? Best-effort; every field may come back empty. */
   'cs/job-context': {
     req: Record<string, never>

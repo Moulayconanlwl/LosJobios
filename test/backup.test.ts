@@ -54,6 +54,8 @@ function application(overrides: Partial<Application> = {}): Application {
     questionsAnswered: 0,
     aiAnswersUsed: 0,
     notes: '',
+    followUpOn: '',
+    nextAction: '',
     ...overrides,
   }
 }

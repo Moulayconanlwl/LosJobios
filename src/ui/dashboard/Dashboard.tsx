@@ -3,9 +3,10 @@ import { APPLICATION_STATUSES, type Application, type ApplicationStatus } from '
 import { deleteApplication, updateApplication } from '@/lib/storage'
 import { AppShell, SidebarLink } from '../components/AppShell'
 import { Badge, type BadgeTone } from '../components/badge'
-import { BriefcaseIcon, SlidersIcon, SparkIcon } from '../components/icons'
-import { Button, Card, Input, Select, Stat } from '../components/ui'
+import { BriefcaseIcon, HistoryIcon, SlidersIcon, SparkIcon } from '../components/icons'
+import { Button, Card, Input, Select, Stat, cx } from '../components/ui'
 import { useApplications, useSavedJobs } from '../hooks'
+import { ActivitySection } from './ActivitySection'
 import { JobsSection } from './JobsSection'
 import { downloadCsv } from './csv'
 
@@ -36,6 +37,7 @@ function relativeDate(timestamp: number): string {
 const NAV = [
   { id: 'applications', label: 'Applications', icon: BriefcaseIcon },
   { id: 'jobs', label: 'Jobs & materials', icon: SparkIcon },
+  { id: 'activity', label: 'Activity', icon: HistoryIcon },
 ] as const
 
 type SectionId = (typeof NAV)[number]['id']
@@ -61,6 +63,7 @@ export function Dashboard() {
       items={[
         { ...NAV[0], badge: realCount },
         { ...NAV[1], badge: jobs.length },
+        NAV[2],
       ]}
       footer={
         <SidebarLink
@@ -70,7 +73,9 @@ export function Dashboard() {
         />
       }
     >
-      {section === 'applications' ? <ApplicationsSection /> : <JobsSection />}
+      {section === 'applications' ? <ApplicationsSection /> : null}
+      {section === 'jobs' ? <JobsSection /> : null}
+      {section === 'activity' ? <ActivitySection /> : null}
     </AppShell>
   )
 }
@@ -200,8 +205,83 @@ function ApplicationsSection() {
   )
 }
 
-function ApplicationRow({ app }: { app: Application }) {
+/** Today as an ISO day, for comparing against a stored follow-up date. */
+function isoToday(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+/**
+ * Notes and a follow-up date, opened per row.
+ *
+ * Kept behind a toggle because most rows never need it, and an always-open
+ * editor on every row turns a scannable table into a wall. Saved on blur
+ * rather than per keystroke — the same reason the answer bank does: writing
+ * through storage on every character fights the field for its own value.
+ */
+function FollowUpEditor({ app }: { app: Application }) {
+  const [notes, setNotes] = useState(app.notes)
+  const [followUpOn, setFollowUpOn] = useState(app.followUpOn)
+  const [nextAction, setNextAction] = useState(app.nextAction)
+
+  const commit = () => {
+    if (notes === app.notes && followUpOn === app.followUpOn && nextAction === app.nextAction) {
+      return
+    }
+    void updateApplication(app.id, { notes, followUpOn, nextAction })
+  }
+
   return (
+    <tr>
+      <td colSpan={5} className="px-1 pb-3">
+        <div className="grid gap-3 rounded-xl border border-zinc-200 p-3 sm:grid-cols-[10rem_1fr] dark:border-zinc-800">
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              Follow up on
+            </span>
+            <Input
+              type="date"
+              value={followUpOn}
+              onChange={(e) => setFollowUpOn(e.target.value)}
+              onBlur={commit}
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              Next action
+            </span>
+            <Input
+              value={nextAction}
+              placeholder="Email the recruiter, prepare for the technical round…"
+              onChange={(e) => setNextAction(e.target.value)}
+              onBlur={commit}
+            />
+          </label>
+
+          <label className="block sm:col-span-2">
+            <span className="mb-1 block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              Notes
+            </span>
+            <Input
+              value={notes}
+              placeholder="Who you spoke to, what they asked, what you promised to send…"
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={commit}
+            />
+          </label>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function ApplicationRow({ app }: { app: Application }) {
+  const [open, setOpen] = useState(false)
+
+  const due = app.followUpOn && app.followUpOn <= isoToday()
+
+  return (
+    <>
     <tr className="align-middle">
       <td className="py-3 pr-3">
         <div className="flex items-center gap-2">
@@ -228,6 +308,16 @@ function ApplicationRow({ app }: { app: Application }) {
 
       <td className="py-3 pr-3 text-xs text-zinc-500" title={new Date(app.appliedAt).toLocaleString()}>
         {relativeDate(app.appliedAt)}
+        {app.followUpOn ? (
+          <span
+            className={cx(
+              'mt-0.5 block',
+              due ? 'font-medium text-amber-600 dark:text-amber-400' : 'text-zinc-400',
+            )}
+          >
+            {due ? 'follow up now' : `follow up ${app.followUpOn}`}
+          </span>
+        ) : null}
       </td>
 
       <td className="py-3 pr-3">
@@ -250,11 +340,16 @@ function ApplicationRow({ app }: { app: Application }) {
       </td>
 
       <td className="py-3 text-right">
+        <Button size="sm" variant="ghost" onClick={() => setOpen((v) => !v)}>
+          {open ? 'Close' : 'Notes'}
+        </Button>
         <Button size="sm" variant="ghost" onClick={() => void deleteApplication(app.id)}>
           Delete
         </Button>
       </td>
     </tr>
+    {open ? <FollowUpEditor app={app} /> : null}
+    </>
   )
 }
 

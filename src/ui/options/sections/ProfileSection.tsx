@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import type { Profile } from '@/lib/schema'
 import { GeminiProvider, hasGeminiPermission } from '@/lib/ai/gemini'
 import type { ParsedResume } from '@/lib/ai/provider'
+import { assessProfile } from '@/lib/profile-health'
 import { heuristicParseResume, mergeParsedResume, preferParsed } from '@/lib/resume-heuristics'
 import {
   Banner,
@@ -13,6 +14,7 @@ import {
   Select,
   Textarea,
   Toggle,
+  cx,
 } from '../../components/ui'
 import type { Draft } from '../../hooks'
 import { useSettings } from '../../hooks'
@@ -20,6 +22,69 @@ import { extractResumeText } from '../resumeExtract'
 
 /** 2 MB — comfortably above any real resume, and well inside the storage quota. */
 const MAX_RESUME_BYTES = 2 * 1024 * 1024
+
+/**
+ * How ready this profile is, and what to fix first.
+ *
+ * Shown at the top of the editor rather than tucked away, because a thin
+ * profile is the root cause of most disappointing autofills and the user
+ * can't see that from inside a form. Gaps are listed worst-first with what
+ * each one actually costs, so the list reads as advice rather than as
+ * nagging for completeness.
+ */
+function ProfileHealthCard({ profile }: { profile: Profile }) {
+  const health = assessProfile(profile)
+
+  const tone =
+    health.score >= 80
+      ? { bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' }
+      : health.score >= 50
+        ? { bar: 'bg-amber-500', text: 'text-amber-600 dark:text-amber-400' }
+        : { bar: 'bg-red-500', text: 'text-red-600 dark:text-red-400' }
+
+  return (
+    <Card
+      title="Profile readiness"
+      description="What a real application form will and won't be able to fill from this."
+    >
+      <div className="flex items-end gap-4">
+        <span className={cx('text-4xl font-semibold tabular-nums', tone.text)}>{health.score}%</span>
+        <div className="flex-1 pb-1.5">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+            <div className={cx('h-full rounded-full', tone.bar)} style={{ width: `${health.score}%` }} />
+          </div>
+          <p className="mt-1.5 text-xs text-zinc-500">
+            {health.gaps.length === 0
+              ? 'Nothing missing — forms should fill cleanly.'
+              : `${health.gaps.length} thing${health.gaps.length === 1 ? '' : 's'} left to add.`}
+          </p>
+        </div>
+      </div>
+
+      {!health.ready ? (
+        <div className="mt-3">
+          <Banner tone="warn">
+            A name and an email are the minimum before anything can be filled at all.
+          </Banner>
+        </div>
+      ) : null}
+
+      {health.gaps.length ? (
+        <ul className="mt-4 flex flex-col gap-2">
+          {health.gaps.slice(0, 5).map((gap) => (
+            <li key={gap.id} className="flex items-start gap-2.5">
+              <span className="mt-1 h-1.5 w-1.5 flex-none rounded-full bg-zinc-300 dark:bg-zinc-700" />
+              <span className="min-w-0">
+                <span className="block text-xs font-medium">{gap.label}</span>
+                <span className="block text-xs text-zinc-500">{gap.impact}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </Card>
+  )
+}
 
 type ParseStatus = 'idle' | 'extracting' | 'parsing' | 'done' | 'error'
 
@@ -169,6 +234,8 @@ export function ProfileSection({ draft }: { draft: Draft<Profile> }) {
 
   return (
     <div className="flex flex-col gap-5">
+      <ProfileHealthCard profile={profile} />
+
       <Card title="Identity" description="Used to fill the name and contact fields on every form.">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="First name">

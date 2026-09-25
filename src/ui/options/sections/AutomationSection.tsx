@@ -1,5 +1,5 @@
 import type { Settings } from '@/lib/schema'
-import { Banner, Card, Field, Input, ListTextarea, Toggle } from '../../components/ui'
+import { Banner, Card, Field, Input, ListTextarea, Select, Toggle } from '../../components/ui'
 import type { Draft } from '../../hooks'
 
 export function AutomationSection({ draft }: { draft: Draft<Settings> }) {
@@ -8,6 +8,22 @@ export function AutomationSection({ draft }: { draft: Draft<Settings> }) {
 
   return (
     <div className="flex flex-col gap-5">
+      <Card
+        title="Language"
+        description="The interface language. Generated documents follow the posting's language, not this."
+      >
+        <Field label="Interface language" className="max-w-xs">
+          <Select
+            value={settings.locale}
+            onChange={(e) => draft.update({ locale: e.target.value as Settings['locale'] })}
+          >
+            <option value="auto">Match my browser</option>
+            <option value="en">English</option>
+            <option value="fr">Français</option>
+          </Select>
+        </Field>
+      </Card>
+
       <Card title="Safety">
         <div className="flex flex-col gap-4">
           <Toggle

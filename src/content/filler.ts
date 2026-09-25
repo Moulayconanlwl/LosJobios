@@ -39,7 +39,7 @@ export type FillResult = {
 }
 
 /** True when a control already holds a usable value. */
-function alreadyFilled(field: DetectedField): boolean {
+export function isFieldFilled(field: DetectedField): boolean {
   const el = field.el
 
   if (el instanceof HTMLInputElement) {
@@ -72,7 +72,7 @@ function alreadyFilled(field: DetectedField): boolean {
  * the background to learn your own email address. Everything else becomes a
  * question for the three-tier resolver.
  */
-async function resolveValue(
+export async function resolveFieldValue(
   field: DetectedField,
   ctx: ApplyContext,
 ): Promise<{ value: string | null; source: FillResult['source']; confidence: number }> {
@@ -109,7 +109,7 @@ async function resolveValue(
 }
 
 /** Write a resolved value into the control, using the right mechanism per kind. */
-async function applyValue(
+export async function applyValue(
   field: DetectedField,
   value: string,
   ctx: ApplyContext,
@@ -164,7 +164,7 @@ export async function fillField(field: DetectedField, ctx: ApplyContext): Promis
   // Never overwrite an answer that's already there. On a multi-step modal the
   // same fields are re-scanned on each pass, and a resume attached on step one
   // must not be attached again on step two.
-  if (alreadyFilled(field)) return { field, status: 'skipped', source: 'none' }
+  if (isFieldFilled(field)) return { field, status: 'skipped', source: 'none' }
 
   if (field.kind === 'file') {
     // The résumé goes in the résumé slot, or in an unlabelled "attach a file"
@@ -180,7 +180,7 @@ export async function fillField(field: DetectedField, ctx: ApplyContext): Promis
     return { field, status: ok ? 'filled' : 'failed', source: 'profile' }
   }
 
-  const { value, source, confidence } = await resolveValue(field, ctx)
+  const { value, source, confidence } = await resolveFieldValue(field, ctx)
 
   if (value === null) return { field, status: 'unanswered', source: 'none' }
 

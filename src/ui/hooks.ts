@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { translate, type CopyKey } from '@/lib/i18n'
+import type { ActivityEntry } from '@/lib/activity'
 import type { AnswerEntry, Application, Profile, RunState, SavedJob, Settings } from '@/lib/schema'
 import {
   STORAGE_KEYS,
@@ -6,6 +8,7 @@ import {
   getApplications,
   getProfile,
   getRunState,
+  getActivity,
   getSavedJobs,
   getSettings,
   onStorageChanged,
@@ -75,8 +78,24 @@ export function useAnswers(): Loadable<AnswerEntry[]> {
   return useStored(getAnswers, [STORAGE_KEYS.answers], [])
 }
 
+export function useActivity(): Loadable<ActivityEntry[]> {
+  return useStored(getActivity, [STORAGE_KEYS.activity], [])
+}
+
 export function useSavedJobs(): Loadable<SavedJob[]> {
   return useStored(getSavedJobs, [STORAGE_KEYS.savedJobs], [])
+}
+
+/**
+ * Translation bound to the stored locale.
+ *
+ * Returns English until settings load, which is the right default: a brief
+ * flash of English beats a flash of raw translation keys.
+ */
+export function useTranslation(): (key: CopyKey) => string {
+  const { data: settings } = useSettings()
+  const locale = settings?.locale ?? 'auto'
+  return useCallback((key: CopyKey) => translate(locale, key), [locale])
 }
 
 export type Draft<T> = {

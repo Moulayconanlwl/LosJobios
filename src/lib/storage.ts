@@ -1,3 +1,4 @@
+import { MAX_ACTIVITY, activityEntrySchema, type ActivityEntry } from './activity'
 import {
   SCHEMA_VERSION,
   answerEntrySchema,
@@ -33,6 +34,7 @@ const LOCAL_KEYS = {
   applications: 'applications',
   answers: 'answers',
   savedJobs: 'savedJobs',
+  activity: 'activity',
 } as const
 
 const SESSION_KEY_RUN = 'runState'
@@ -321,6 +323,47 @@ export async function patchRunState(patch: Partial<RunState>): Promise<RunState>
   const next = runStateSchema.parse({ ...(await getRunState()), ...patch })
   await session().set({ [SESSION_KEY_RUN]: next })
   return next
+}
+
+// ---------------------------------------------------------------------------
+// Activity log
+// ---------------------------------------------------------------------------
+
+const activitySchema = z.array(activityEntrySchema)
+
+export async function getActivity(): Promise<ActivityEntry[]> {
+  return parseOr(activitySchema, await readRaw(local(), LOCAL_KEYS.activity), () => [])
+}
+
+/**
+ * Append one entry, newest first.
+ *
+ * Callers pass what happened, not what was written — see `lib/activity.ts`
+ * for why that distinction is load-bearing. Logging must never be able to
+ * fail an operation, so this swallows its own errors.
+ */
+export async function logActivity(
+  entry: { kind: ActivityEntry['kind']; summary: string } & Partial<
+    Omit<ActivityEntry, 'id' | 'kind' | 'summary'>
+  >,
+): Promise<void> {
+  try {
+    const parsed = activityEntrySchema.parse({
+      ...entry,
+      id: crypto.randomUUID(),
+      at: entry.at ?? Date.now(),
+    })
+
+    const all = await getActivity()
+    all.unshift(parsed)
+    await local().set({ [LOCAL_KEYS.activity]: all.slice(0, MAX_ACTIVITY) })
+  } catch (err) {
+    console.warn('[LosJobios] could not write an activity entry', err)
+  }
+}
+
+export async function clearActivity(): Promise<void> {
+  await local().set({ [LOCAL_KEYS.activity]: [] })
 }
 
 // ---------------------------------------------------------------------------

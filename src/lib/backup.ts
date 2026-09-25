@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { activityEntrySchema } from './activity'
 import {
   SCHEMA_VERSION,
   answerEntrySchema,
@@ -8,6 +9,7 @@ import {
   settingsSchema,
 } from './schema'
 import {
+  getActivity,
   getAnswers,
   getApplications,
   getProfile,
@@ -48,6 +50,7 @@ export const backupSchema = z.object({
   applications: z.array(applicationSchema).default([]),
   answers: z.array(answerEntrySchema).default([]),
   savedJobs: z.array(savedJobSchema).default([]),
+  activity: z.array(activityEntrySchema).default([]),
 })
 
 export type Backup = z.infer<typeof backupSchema>
@@ -63,12 +66,13 @@ export type RestoreReport = {
 }
 
 export async function createBackup(): Promise<Backup> {
-  const [profile, settings, applications, answers, savedJobs] = await Promise.all([
+  const [profile, settings, applications, answers, savedJobs, activity] = await Promise.all([
     getProfile(),
     getSettings(),
     getApplications(),
     getAnswers(),
     getSavedJobs(),
+    getActivity(),
   ])
 
   return {
@@ -81,6 +85,7 @@ export async function createBackup(): Promise<Backup> {
     applications,
     answers,
     savedJobs,
+    activity,
   }
 }
 

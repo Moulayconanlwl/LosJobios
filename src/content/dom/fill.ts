@@ -186,7 +186,15 @@ export async function fillCheckbox(
 
 function findLabelFor(el: HTMLInputElement): HTMLElement | null {
   if (el.id) {
-    const byFor = document.querySelector<HTMLElement>(`label[for="${CSS.escape(el.id)}"]`)
+    // Scoped to the element's own root: ids belong to their shadow tree, so a
+    // custom radio inside a web component has its label there, not on
+    // `document`. Without this, such a control can be detected but never
+    // clicked, because the visible thing to click is its label.
+    const scope = el.getRootNode()
+    const root: Document | ShadowRoot =
+      scope instanceof ShadowRoot || scope instanceof Document ? scope : document
+
+    const byFor = root.querySelector<HTMLElement>(`label[for="${CSS.escape(el.id)}"]`)
     if (byFor && isVisible(byFor)) return byFor
   }
   const wrapping = el.closest('label')

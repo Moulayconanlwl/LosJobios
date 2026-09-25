@@ -163,6 +163,22 @@ export function Popup() {
       </Button>
 
       <Button
+        variant="primary"
+        disabled={busy}
+        onClick={() =>
+          void run(async () => {
+            // Opening the panel has to happen in this click — Chrome rejects
+            // sidePanel.open outside a user gesture.
+            const result = await sendToBackground('panel/open')
+            if (result.ok) window.close()
+            return result
+          })
+        }
+      >
+        Review &amp; fill this form
+      </Button>
+
+      <Button
         variant="secondary"
         disabled={busy}
         onClick={() =>
