@@ -56,6 +56,14 @@ export type MessageMap = {
    * `activeTab` needs on a site we hold no standing permission for.
    */
   'ats/capture-job': { req: Record<string, never>; res: Ack & { job?: CapturedJob } }
+  /** Scrape the job list on the current page into the saved-jobs library. */
+  'jobs/scan-active-tab': { req: Record<string, never>; res: Ack & { added?: number; found?: number } }
+  /**
+   * Open one saved posting in a background tab just long enough to read its
+   * description, then close it. A search page's cards don't carry the text,
+   * and tailoring anything to a job needs it.
+   */
+  'jobs/fetch-description': { req: { id: string }; res: Ack & { description?: string } }
 
   // ---- background → content --------------------------------------------
   'cs/ping': { req: Record<string, never>; res: { ready: true; site: string } }

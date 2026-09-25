@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AnswerEntry, Application, Profile, RunState, Settings } from '@/lib/schema'
+import type { AnswerEntry, Application, Profile, RunState, SavedJob, Settings } from '@/lib/schema'
 import {
   STORAGE_KEYS,
   getAnswers,
   getApplications,
   getProfile,
   getRunState,
+  getSavedJobs,
   getSettings,
   onStorageChanged,
 } from '@/lib/storage'
@@ -72,6 +73,10 @@ export function useApplications(): Loadable<Application[]> {
 
 export function useAnswers(): Loadable<AnswerEntry[]> {
   return useStored(getAnswers, [STORAGE_KEYS.answers], [])
+}
+
+export function useSavedJobs(): Loadable<SavedJob[]> {
+  return useStored(getSavedJobs, [STORAGE_KEYS.savedJobs], [])
 }
 
 export type Draft<T> = {

@@ -173,6 +173,55 @@ export const applicationSchema = z.object({
 export type Application = z.infer<typeof applicationSchema>
 
 // ---------------------------------------------------------------------------
+// Saved jobs — scraped postings you can generate materials for
+// ---------------------------------------------------------------------------
+
+/**
+ * A resume rewritten for one posting.
+ *
+ * Only the *wording* is generated. Company names, titles and dates are
+ * reattached from the stored profile afterwards, so the model has no way to
+ * invent an employer or move a date, however the prompt is read.
+ */
+export const tailoredRoleSchema = z.object({
+  /** Index into the profile's own experience list — how a role is identified. */
+  index: z.number(),
+  bullets: z.array(z.string()).default([]),
+})
+
+export const tailoredResumeSchema = z.object({
+  summary: z.string().default(''),
+  /** The profile's real skills, reordered so the posting's matches lead. */
+  skills: z.array(z.string()).default([]),
+  roles: z.array(tailoredRoleSchema).default([]),
+  /** What it changed, so nothing is silently rewritten on your behalf. */
+  notes: z.array(z.string()).default([]),
+  generatedAt: z.number().default(0),
+})
+
+export type TailoredResume = z.infer<typeof tailoredResumeSchema>
+export type TailoredRole = z.infer<typeof tailoredRoleSchema>
+
+export const savedJobSchema = z.object({
+  id: z.string(),
+  /** Stable per-site job id, used to dedupe repeated scrapes. */
+  externalId: z.string().default(''),
+  title: z.string().default(''),
+  company: z.string().default(''),
+  location: z.string().default(''),
+  url: z.string().default(''),
+  source: z.enum(['linkedin', 'universal', 'manual']).default('linkedin'),
+  /** Empty until the posting itself is opened — a card doesn't carry it. */
+  description: z.string().default(''),
+  savedAt: z.number(),
+  coverLetter: z.string().default(''),
+  coverLetterAt: z.number().default(0),
+  resume: tailoredResumeSchema.nullable().default(null),
+})
+
+export type SavedJob = z.infer<typeof savedJobSchema>
+
+// ---------------------------------------------------------------------------
 // Answer bank
 // ---------------------------------------------------------------------------
 
@@ -281,6 +330,10 @@ export type RunState = z.infer<typeof runStateSchema>
 // ---------------------------------------------------------------------------
 // Defaults
 // ---------------------------------------------------------------------------
+
+/** The non-identifying half of a saved job, so callers only supply the facts. */
+export const savedJobDefaults = () =>
+  savedJobSchema.omit({ id: true, savedAt: true }).parse({})
 
 export const defaultProfile = (): Profile => profileSchema.parse({})
 export const defaultSettings = (): Settings => settingsSchema.parse({})

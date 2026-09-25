@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react'
 import { APPLICATION_STATUSES, type Application, type ApplicationStatus } from '@/lib/schema'
 import { deleteApplication, updateApplication } from '@/lib/storage'
+import { AppShell, SidebarLink } from '../components/AppShell'
 import { Badge, type BadgeTone } from '../components/badge'
+import { BriefcaseIcon, SlidersIcon, SparkIcon } from '../components/icons'
 import { Button, Card, Input, Select, Stat } from '../components/ui'
-import { useApplications } from '../hooks'
+import { useApplications, useSavedJobs } from '../hooks'
+import { JobsSection } from './JobsSection'
 import { downloadCsv } from './csv'
 
 /**
@@ -30,7 +33,49 @@ function relativeDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString()
 }
 
+const NAV = [
+  { id: 'applications', label: 'Applications', icon: BriefcaseIcon },
+  { id: 'jobs', label: 'Jobs & materials', icon: SparkIcon },
+] as const
+
+type SectionId = (typeof NAV)[number]['id']
+
+function initialSection(): SectionId {
+  const hash = location.hash.replace(/^#/, '')
+  return NAV.some((item) => item.id === hash) ? (hash as SectionId) : 'applications'
+}
+
 export function Dashboard() {
+  const [section, setSection] = useState<SectionId>(initialSection)
+  const { data: applications } = useApplications()
+  const { data: jobs } = useSavedJobs()
+
+  const realCount = applications.filter((app) => !app.dryRun).length
+
+  return (
+    <AppShell
+      title="LosJobios"
+      subtitle="Job application autopilot"
+      active={section}
+      onSelect={setSection}
+      items={[
+        { ...NAV[0], badge: realCount },
+        { ...NAV[1], badge: jobs.length },
+      ]}
+      footer={
+        <SidebarLink
+          label="Profile & settings"
+          icon={SlidersIcon}
+          onClick={() => void chrome.runtime.openOptionsPage()}
+        />
+      }
+    >
+      {section === 'applications' ? <ApplicationsSection /> : <JobsSection />}
+    </AppShell>
+  )
+}
+
+function ApplicationsSection() {
   const { data: applications } = useApplications()
 
   const [query, setQuery] = useState('')
@@ -70,7 +115,7 @@ export function Dashboard() {
   }, [applications])
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
+    <div>
       <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Applications</h1>
@@ -78,18 +123,13 @@ export function Dashboard() {
             Everything the autopilot has sent, plus anything you move by hand.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => void chrome.runtime.openOptionsPage()}>
-            Settings
-          </Button>
-          <Button
-            variant="primary"
-            disabled={visible.length === 0}
-            onClick={() => downloadCsv(visible)}
-          >
-            Export CSV
-          </Button>
-        </div>
+        <Button
+          variant="primary"
+          disabled={visible.length === 0}
+          onClick={() => downloadCsv(visible)}
+        >
+          Export CSV
+        </Button>
       </header>
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">

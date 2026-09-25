@@ -75,11 +75,27 @@ The extension has **no network permission at all** until you grant it here.
 
 ---
 
+## The jobs library
+
+Every posting a run sees is saved, so you can come back to it. **Scan this page for jobs** in the popup does the same thing without applying to anything — point it at a LinkedIn search and the whole list lands in the dashboard.
+
+Open **Jobs & materials** in the dashboard, pick a posting, and everything that needs a specific job to work is there: its description, a cover letter, a resume rewritten for it, and its ATS score.
+
+A posting scraped from a *list* only carries a title — the description isn't in the card. **Fetch description** opens that posting in a background tab, reads it, and closes the tab again. Everything else on the panel switches on once it has one.
+
 ## Cover letters
 
 When a form asks for one, a cover letter is written for that specific posting — from your profile and the job description on the page — rather than pasted from a saved block of text. It's deliberately generated fresh each time and never cached in the answer bank: a letter reused verbatim across thirty applications is the thing a cover letter is supposed to not be.
 
 The optional template under **Profile → Cover letter** is a style reference, not a script. Paste a letter whose tone you like and the generator matches its voice while writing new content for each role. With no AI key configured, that template is used verbatim as the fallback, and if it's empty the field is left for you.
+
+## Resumes, rewritten per job
+
+**Tailor my resume** on a saved job rewrites your existing experience to lead with what that posting asks for.
+
+It only ever writes *wording*. Companies, titles and dates are reattached from your profile after the model has had its say, so it has no way to put an employer you never worked for on the page — a role number it invents is dropped, and a "skill" that isn't already on your profile is ignored. A role it skipped keeps whatever you wrote yourself rather than disappearing.
+
+What it can't claim, it tells you instead: every rewrite comes with a short list of what changed and what the posting wants that your history doesn't support. That list is the point. Copy it as text, or download it.
 
 ## Will this CV get through?
 
@@ -119,12 +135,14 @@ src/
 │   └── filler.ts   decides what goes in a field and writes it there
 ├── lib/            schema, storage, messaging, field rules, answer resolution, AI,
 │                   resume-heuristics.ts (regex parsing + profile merge),
-│                   ats.ts (offline keyword scoring — no model, no network)
+│                   ats.ts (offline keyword scoring — no model, no network),
+│                   tailored-resume.ts (reattaches real facts to generated wording)
 └── ui/
+    ├── components/ AppShell (the sidebar both pages share), icons, primitives
     ├── options/    profile editor, ATS scorer — resumeExtract.ts (pdf.js/mammoth,
     │               lazy-loaded, isolated to this page only) does the file → text step
     ├── popup/      run controls
-    └── dashboard/  application tracking (React)
+    └── dashboard/  applications + the jobs library and its materials (React)
 ```
 
 ### Things worth knowing before you change anything
@@ -144,6 +162,8 @@ src/
 **Resume parsing only ever fills empty fields, never overwrites.** `mergeParsedResume` checks each profile field before writing to it — heuristic and AI results alike. This is what makes it safe to upload a CV, edit a few fields by hand, and click "Parse resume" again later without losing the edits. `pdfjs-dist` and `mammoth` are dynamically imported from `resumeExtract.ts`, which only the options page reaches — check a build's chunk sizes if you touch this, since pulling either library into the content script or background bundle by accident would bloat both by several hundred KB for no benefit.
 
 **pdf.js's `getTextContent()` has no notion of a line — joining fragments with a bare space collapses a whole page into one string.** That silently breaks every line-oriented heuristic (the candidate's name is the first line; a Skills section reads until the next blank line) while regex-based email/phone/link extraction keeps working, since it scans anywhere in the text — which is exactly why partial, seemingly-arbitrary extraction failures are the symptom, not a crash. `lib/pdf-text.ts`'s `reconstructLines` rebuilds real lines from each fragment's position (`transform`, `width`, `hasEOL`) before anything downstream sees the text. Never go back to a plain `.join(' ')` here.
+
+**A generated resume never carries a generated fact.** The model is given the candidate's roles *numbered*, and returns bullets under those numbers — it never sees a slot for a company name or a date. `renderResume` reattaches those from the stored profile, `generateResume` drops any role number that isn't one of theirs, and skills are intersected with what the profile already claims. So the failure mode of a model inventing an employer is a dropped bullet, not a lie on a document an employer reads. Don't "simplify" this by letting the model return company names directly.
 
 **A two-word phrase has to recur before the ATS scorer treats it as a term.** A sliding window over "Build machine learning models" produces "build machine" as readily as "machine learning", and a kept phrase *suppresses the words inside it* — so keeping one-off pairings doesn't just add noise, it deletes the actual skills ("deep java" surviving instead of "java" was the live bug). Requiring a second mention throws away the window artefacts and keeps the terms of art, since a posting that really trades in a phrase says it more than once. Phrases also never form across punctuation: "Python, Go" is two skills, not the phrase "python go".
 

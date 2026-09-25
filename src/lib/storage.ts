@@ -8,12 +8,14 @@ import {
   defaultSettings,
   profileSchema,
   runStateSchema,
+  savedJobSchema,
   settingsSchema,
   type AnswerEntry,
   type Application,
   type CapturedJob,
   type Profile,
   type RunState,
+  type SavedJob,
   type Settings,
 } from './schema'
 import { z } from 'zod'
@@ -30,6 +32,7 @@ const LOCAL_KEYS = {
   settings: 'settings',
   applications: 'applications',
   answers: 'answers',
+  savedJobs: 'savedJobs',
 } as const
 
 const SESSION_KEY_RUN = 'runState'
@@ -173,6 +176,79 @@ export async function appliedExternalIds(source: string): Promise<Set<string>> {
     if (app.source === source && app.externalId && !app.dryRun) ids.add(app.externalId)
   }
   return ids
+}
+
+// ---------------------------------------------------------------------------
+// Saved jobs
+// ---------------------------------------------------------------------------
+
+const savedJobsSchema = z.array(savedJobSchema)
+
+/** Plenty of history without letting one long session fill the quota. */
+const MAX_SAVED_JOBS = 500
+
+export async function getSavedJobs(): Promise<SavedJob[]> {
+  return parseOr(savedJobsSchema, await readRaw(local(), LOCAL_KEYS.savedJobs), () => [])
+}
+
+/** Replace one job in place, matched on id. */
+export async function putSavedJob(job: SavedJob): Promise<void> {
+  const parsed = savedJobSchema.parse(job)
+  const all = await getSavedJobs()
+  const idx = all.findIndex((entry) => entry.id === parsed.id)
+
+  if (idx >= 0) all[idx] = parsed
+  else all.unshift(parsed)
+
+  await local().set({ [LOCAL_KEYS.savedJobs]: all.slice(0, MAX_SAVED_JOBS) })
+}
+
+/**
+ * Add freshly scraped postings, newest first.
+ *
+ * Re-scraping the same search must not pile up duplicates, so an incoming
+ * job that matches one already stored updates it instead — and only with
+ * fields that carry something, so a card scrape (title only) can never wipe
+ * the description a later visit to the posting filled in.
+ */
+export async function addScrapedJobs(jobs: SavedJob[]): Promise<number> {
+  if (!jobs.length) return 0
+
+  const all = await getSavedJobs()
+  const keyOf = (job: SavedJob) => `${job.source}:${job.externalId || job.url}`
+  const byKey = new Map(all.map((job) => [keyOf(job), job]))
+
+  let added = 0
+
+  for (const incoming of jobs) {
+    const parsed = savedJobSchema.parse(incoming)
+    const existing = byKey.get(keyOf(parsed))
+
+    if (!existing) {
+      byKey.set(keyOf(parsed), parsed)
+      all.unshift(parsed)
+      added += 1
+      continue
+    }
+
+    existing.title = parsed.title || existing.title
+    existing.company = parsed.company || existing.company
+    existing.location = parsed.location || existing.location
+    existing.url = parsed.url || existing.url
+    existing.description = parsed.description || existing.description
+  }
+
+  await local().set({ [LOCAL_KEYS.savedJobs]: all.slice(0, MAX_SAVED_JOBS) })
+  return added
+}
+
+export async function deleteSavedJob(id: string): Promise<void> {
+  const all = await getSavedJobs()
+  await local().set({ [LOCAL_KEYS.savedJobs]: all.filter((job) => job.id !== id) })
+}
+
+export async function clearSavedJobs(): Promise<void> {
+  await local().set({ [LOCAL_KEYS.savedJobs]: [] })
 }
 
 // ---------------------------------------------------------------------------

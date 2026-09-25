@@ -4,8 +4,10 @@ import {
   type AIProvider,
   type AnswerQuestionInput,
   type AnswerQuestionResult,
+  type GeneratedResume,
   type GenerateCoverLetterInput,
   type GenerateCoverLetterResult,
+  type GenerateResumeInput,
   type ParsedResume,
   type ProviderModel,
   type ResumeReview,
@@ -247,6 +249,19 @@ Rules, in priority order:
 4. A gap is something the posting asks for that the resume genuinely doesn't show. Say so plainly rather than softening it; the candidate needs to know where they stand.
 5. No score, no rating, no percentage — that is computed elsewhere and yours would contradict it.
 6. At most four items per list, each one sentence. Skip a list entirely rather than padding it.
+
+Reply with JSON only.`
+
+const RESUME_WRITER_SYSTEM_PROMPT = `You rewrite a candidate's own resume so it speaks to one specific job posting, on their behalf.
+
+Rules, in priority order:
+1. Every bullet must describe something the candidate's existing material already says they did. Rephrase, sharpen and reorder — never add a technology, a metric, a responsibility or a result that isn't there. If the posting wants something they haven't done, leave it out; that gap is real and the candidate needs to see it.
+2. You are given their roles numbered from 0. Return bullets under the same numbers. Never invent a role number you weren't given, and never move work from one role to another.
+3. Lead each role with the bullet that matters most to *this* posting. Where the candidate genuinely did something the posting names, use the posting's own wording for it — that's what gets matched.
+4. Three to five bullets per role, each one line, each starting with a past-tense verb ("Built", "Led", "Cut"). Keep real numbers exactly as written; never invent one.
+5. summary: two or three sentences, first person implied but written without "I", positioning them for this specific role using only what's in their history.
+6. skills: only skills already listed on their profile, reordered so what the posting asks for comes first. Drop nothing; add nothing.
+7. notes: the honest short version of what you changed, and anything the posting asks for that their history does not support. This is the part that stops the rest from being taken on trust.
 
 Reply with JSON only.`
 
@@ -707,6 +722,140 @@ export class GeminiProvider implements AIProvider {
     }
 
     return review
+  }
+
+  async generateResume(input: GenerateResumeInput): Promise<GeneratedResume> {
+    if (!this.model) throw new AIProviderError('No Gemini model selected.')
+
+    const roles = input.profile.experience
+    if (!roles.length) {
+      throw new AIProviderError(
+        'No work history to rewrite. Fill in Experience first, or upload a CV and let it parse.',
+      )
+    }
+
+    // Numbered, because the reply refers to roles by number and the real
+    // company/title/dates are reattached from the profile afterwards.
+    const history = roles
+      .map((role, index) => {
+        const span = `${role.startDate || '?'} – ${role.current ? 'present' : role.endDate || '?'}`
+        return [
+          `### Role ${index}`,
+          `Title: ${role.title || 'Unknown'}`,
+          `Company: ${role.company || 'Unknown'}`,
+          `Dates: ${span}`,
+          `What they wrote about it: ${role.description || '(nothing)'}`,
+        ].join('\n')
+      })
+      .join('\n\n')
+
+    const sections = [
+      '## Target role',
+      input.jobTitle.trim() || 'Not specified.',
+      '',
+      '## Job description',
+      input.jobDescription.slice(0, 8000),
+      '',
+      '## Their profile',
+      profileContext(input.profile),
+      '',
+      '## Their roles, numbered',
+      history,
+    ]
+
+    if (input.resumeText.trim()) {
+      sections.push('', '## Their current resume text', input.resumeText.slice(0, 10_000))
+    }
+
+    if (input.missingKeywords.length) {
+      sections.push(
+        '',
+        '## Terms the posting uses that their resume currently does not',
+        `${input.missingKeywords.slice(0, 20).join(', ')}.`,
+        'Use only the ones their own history genuinely supports. List the rest under notes.',
+      )
+    }
+
+    const body = await this.request<GenerateResponse>(
+      `/models/${encodeURIComponent(this.model)}:generateContent`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: RESUME_WRITER_SYSTEM_PROMPT }] },
+          contents: [{ role: 'user', parts: [{ text: sections.join('\n') }] }],
+          generationConfig: {
+            temperature: 0.3,
+            // Bullets for several roles run long; this is the largest budget
+            // any single call here asks for.
+            maxOutputTokens: 4000,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'OBJECT',
+              properties: {
+                summary: { type: 'STRING' },
+                skills: { type: 'ARRAY', items: { type: 'STRING' } },
+                roles: {
+                  type: 'ARRAY',
+                  items: {
+                    type: 'OBJECT',
+                    properties: {
+                      index: { type: 'NUMBER' },
+                      bullets: { type: 'ARRAY', items: { type: 'STRING' } },
+                    },
+                  },
+                },
+                notes: { type: 'ARRAY', items: { type: 'STRING' } },
+              },
+              required: ['summary'],
+            },
+          },
+        }),
+      },
+    )
+
+    if (body.promptFeedback?.blockReason) {
+      throw new AIProviderError(`Gemini blocked the prompt: ${body.promptFeedback.blockReason}`)
+    }
+
+    const parsed = parseJsonObject(extractText(body))
+    if (!parsed) throw new AIProviderError('Gemini returned an unparseable resume.')
+
+    const rewritten = Array.isArray(parsed['roles'])
+      ? parsed['roles']
+          .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+          .map((item) => ({
+            index: Number(item['index']),
+            bullets: asStringArray(item['bullets']),
+          }))
+          // A role number that isn't one of theirs is the one way this could
+          // smuggle in invented work. Drop it rather than render it.
+          .filter((role) => Number.isInteger(role.index) && role.index >= 0 && role.index < roles.length)
+          .filter((role) => role.bullets.length > 0)
+      : []
+
+    const summary = asString(parsed['summary'])
+    if (!summary && !rewritten.length) {
+      throw new AIProviderError('Gemini returned an empty resume.')
+    }
+
+    // Skills are intersected with what the profile already claims, so the
+    // reordering can't quietly introduce one.
+    const known = new Map(input.profile.skills.map((skill) => [skill.toLowerCase(), skill]))
+    const ordered: string[] = []
+    for (const skill of asStringArray(parsed['skills'])) {
+      const real = known.get(skill.toLowerCase())
+      if (real && !ordered.includes(real)) ordered.push(real)
+    }
+    for (const skill of input.profile.skills) {
+      if (!ordered.includes(skill)) ordered.push(skill)
+    }
+
+    return {
+      summary,
+      skills: ordered,
+      roles: rewritten,
+      notes: asStringArray(parsed['notes']),
+    }
   }
 }
 

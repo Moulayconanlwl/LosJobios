@@ -1,6 +1,15 @@
 import { resolveAnswer } from '@/lib/answers'
 import { registerHandlers, sendToTab } from '@/lib/messaging'
-import { getRunState, patchRunState, runMigrations, setCapturedJob } from '@/lib/storage'
+import { savedJobDefaults } from '@/lib/schema'
+import {
+  addScrapedJobs,
+  getRunState,
+  getSavedJobs,
+  patchRunState,
+  putSavedJob,
+  runMigrations,
+  setCapturedJob,
+} from '@/lib/storage'
 import { claimContentFrame, resolveContentFrame } from './frames'
 import { ensureContentScript, getActiveTab, isInjectable } from './injector'
 import {
@@ -108,7 +117,111 @@ registerHandlers({
     }
     await setCapturedJob(job)
 
+    // A posting read in full is worth keeping — this is the one path that
+    // captures a description without opening anything extra.
+    await addScrapedJobs([
+      {
+        ...savedJobDefaults(),
+        id: crypto.randomUUID(),
+        title: context.title,
+        company: context.company,
+        url: context.url,
+        description: context.description,
+        source: tab.url?.includes('linkedin.com') ? ('linkedin' as const) : ('universal' as const),
+        savedAt: Date.now(),
+      },
+    ])
+
     return { ok: true as const, job }
+  },
+
+  /**
+   * Scrape the job list the user is looking at into the saved-jobs library,
+   * without applying to anything. This is how a posting gets into the
+   * dashboard to have materials written for it.
+   */
+  'jobs/scan-active-tab': async () => {
+    const tab = await getActiveTab()
+    if (!tab?.id) return { ok: false as const, error: 'No active tab.' }
+
+    if (!isInjectable(tab.url)) {
+      return { ok: false as const, error: 'This page can’t be scanned.' }
+    }
+
+    const ready = await ensureContentScript(tab.id)
+    if (!ready) {
+      return { ok: false as const, error: 'Could not reach the page. Try reloading it.' }
+    }
+
+    const frameId = await resolveContentFrame(tab.id)
+    const { jobs, emptyReason } = await sendToTab(tab.id, 'cs/collect-jobs', { limit: 100 }, { frameId })
+
+    if (!jobs.length) {
+      return { ok: false as const, error: emptyReason ?? 'No jobs found on this page.' }
+    }
+
+    const now = Date.now()
+    const added = await addScrapedJobs(
+      jobs.map((job) => ({
+        ...savedJobDefaults(),
+        id: crypto.randomUUID(),
+        externalId: job.externalId,
+        title: job.title,
+        company: job.company,
+        location: job.location,
+        url: job.url,
+        source: 'linkedin' as const,
+        savedAt: now,
+      })),
+    )
+
+    return { ok: true as const, added, found: jobs.length }
+  },
+
+  /**
+   * Read one posting's description by opening it in a background tab.
+   *
+   * The tab is created inactive so it doesn't steal focus, and closed again
+   * whatever happens — an orphaned tab per job would be worse than no
+   * description at all.
+   */
+  'jobs/fetch-description': async ({ id }) => {
+    const job = (await getSavedJobs()).find((entry) => entry.id === id)
+    if (!job) return { ok: false as const, error: 'That job is no longer saved.' }
+    if (!job.url) return { ok: false as const, error: 'That job has no link to open.' }
+
+    let tabId: number | undefined
+
+    try {
+      const tab = await chrome.tabs.create({ url: job.url, active: false })
+      tabId = tab.id
+
+      if (tabId === undefined) return { ok: false as const, error: 'Could not open the posting.' }
+      if (!(await ensureContentScript(tabId))) {
+        return { ok: false as const, error: 'Could not read that page.' }
+      }
+
+      const frameId = await resolveContentFrame(tabId)
+      const context = await sendToTab(tabId, 'cs/job-context', {}, { frameId })
+      const description = context.description.trim()
+
+      if (!description) {
+        return { ok: false as const, error: 'No description found on that posting.' }
+      }
+
+      await putSavedJob({
+        ...job,
+        description,
+        title: job.title || context.title,
+        company: job.company || context.company,
+      })
+
+      return { ok: true as const, description }
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) }
+    } finally {
+      if (tabId !== undefined) await chrome.tabs.remove(tabId).catch(() => {})
+    }
   },
 
   'cs/claim-frame': async (_, sender) => {

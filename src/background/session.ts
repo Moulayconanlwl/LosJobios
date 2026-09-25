@@ -3,13 +3,14 @@ import { NoReceiverError, sendToTab, type Ack } from '@/lib/messaging'
 import type { Application, JobRef, RunState } from '@/lib/schema'
 import {
   addApplication,
+  addScrapedJobs,
   appliedExternalIds,
   getRunState,
   getSettings,
   patchRunState,
   setRunState,
 } from '@/lib/storage'
-import { defaultRunState } from '@/lib/schema'
+import { defaultRunState, savedJobDefaults } from '@/lib/schema'
 import { clearContentFrame, resolveContentFrame } from './frames'
 import { ensureContentScript, getActiveTab, isLinkedInJobsPage } from './injector'
 
@@ -113,6 +114,27 @@ export async function startRun(): Promise<Ack> {
   } catch (err) {
     await patchRunState({ status: 'idle', lastError: describeError(err) })
     return { ok: false, error: describeError(err) }
+  }
+
+  // Everything the run saw goes into the library too, so the dashboard can
+  // write materials for a job whether or not the run got to it.
+  if (jobs.length) {
+    const now = Date.now()
+    void addScrapedJobs(
+      jobs.map((job) => ({
+        ...savedJobDefaults(),
+        id: crypto.randomUUID(),
+        externalId: job.externalId,
+        title: job.title,
+        company: job.company,
+        location: job.location,
+        url: job.url,
+        source: 'linkedin' as const,
+        savedAt: now,
+      })),
+    ).catch(() => {
+      // Saving for later must never be what fails a run.
+    })
   }
 
   if (settings.skipAlreadyApplied) {

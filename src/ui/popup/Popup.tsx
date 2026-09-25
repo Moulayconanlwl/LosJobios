@@ -167,6 +167,26 @@ export function Popup() {
         disabled={busy}
         onClick={() =>
           void run(async () => {
+            const result = await sendToBackground('jobs/scan-active-tab')
+            if (result.ok) {
+              setAutofillNote(
+                `Saved ${result.added ?? 0} new job${result.added === 1 ? '' : 's'} of ${
+                  result.found ?? 0
+                } on this page. Open the dashboard to write materials for them.`,
+              )
+            }
+            return result
+          })
+        }
+      >
+        Scan this page for jobs
+      </Button>
+
+      <Button
+        variant="secondary"
+        disabled={busy}
+        onClick={() =>
+          void run(async () => {
             const result = await sendToBackground('ats/capture-job')
             if (result.ok) {
               // The scorer needs room the popup doesn't have, and the result

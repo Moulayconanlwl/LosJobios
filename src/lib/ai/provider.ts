@@ -113,6 +113,32 @@ export type ResumeReview = {
   suggestions: string[]
 }
 
+export type GenerateResumeInput = {
+  profile: Profile
+  /** The stored resume text, as extra ground truth for what actually happened. */
+  resumeText: string
+  jobTitle: string
+  jobDescription: string
+  /** Terms the ATS scorer found in the posting but not the resume. */
+  missingKeywords: string[]
+}
+
+/**
+ * A resume rewritten for one posting — wording only.
+ *
+ * `roles` identifies each role by its index in the profile's experience list
+ * rather than by name, and the caller reattaches the real company, title and
+ * dates afterwards. A model that hallucinates an employer therefore can't
+ * get one onto the page: the worst it can do is write bullets for a role
+ * index that doesn't exist, which is dropped.
+ */
+export type GeneratedResume = {
+  summary: string
+  skills: string[]
+  roles: Array<{ index: number; bullets: string[] }>
+  notes: string[]
+}
+
 export interface AIProvider {
   readonly name: string
   /** Models the supplied key can actually call, best-first. */
@@ -124,6 +150,8 @@ export interface AIProvider {
   generateCoverLetter(input: GenerateCoverLetterInput): Promise<GenerateCoverLetterResult>
   /** Qualitative review of a resume against one posting. The score is computed separately. */
   reviewResume(input: ReviewResumeInput): Promise<ResumeReview>
+  /** Rewrite the candidate's real experience to speak to one posting. */
+  generateResume(input: GenerateResumeInput): Promise<GeneratedResume>
 }
 
 export class AIProviderError extends Error {
