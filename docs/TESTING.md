@@ -4,7 +4,7 @@
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm test            # vitest run — 358 tests across 29 files
+npm test            # vitest run — 423 tests across 32 files
 npm run build       # tsc --noEmit && vite build
 ```
 
@@ -27,6 +27,9 @@ All three are clean as of this work.
 | CV/letter generation and LaTeX escaping | `gemini-*.test.ts`, `latex.test.ts`, `tailored-resume.test.ts` |
 | Backup / restore | `backup.test.ts`, `saved-jobs.test.ts` |
 | Frame resolution | `frames.test.ts` |
+| Indeed adapter decisions | `indeed.test.ts` |
+| Which URLs a run may act on | `job-board.test.ts` |
+| ATS matching, requirements and advice | `ats-review.test.ts` |
 | List-editing inputs | `list-textarea.test.ts` |
 | Page render smoke tests | `ui-render.test.tsx` |
 
@@ -69,7 +72,7 @@ Load the extension first: `npm run build`, then `chrome://extensions` → Develo
 
 ### 4. Site report
 
-1. Open a LinkedIn job → panel should say LinkedIn is recognised.
+1. Open a LinkedIn job → panel should say LinkedIn is recognised. Same on an Indeed posting.
 2. Open a random page with no form → should say no form found.
 3. Open an unknown careers page with a form → should say generic form.
 
@@ -111,15 +114,69 @@ Load the extension first: `npm run build`, then `chrome://extensions` → Develo
 3. **Verify:** panel text is French, including the "n'envoie jamais le formulaire" safety line.
 4. **Known limitation:** the options page, dashboard and popup remain English.
 
-### 11. Regression check on existing features
+### 11. Indeed — the whole run, with dry run ON
+
+Dry run stays on for all of this. It walks the entire flow and stops at Submit.
+
+1. Open an Indeed search (`indeed.com/jobs?q=…`, or `fr.indeed.com` — any country site).
+2. Popup → **Start on this page**.
+3. **Verify** it queues jobs. If it says zero, the message should name *why* — signed
+   out, no cards found at all, or everything filtered — not a generic failure.
+4. Watch one job go through and check each of these in order:
+   - the posting opens in the pane beside the list;
+   - the run clicks **Apply now** and the tab navigates to `smartapply.indeed.com`;
+   - the run picks up there rather than reporting a lost page;
+   - it walks the wizard steps, filling what it can;
+   - **it stops at Submit and does not click it.**
+5. **Verify it comes back to the search page** before the next job starts. This is the
+   step most likely to be wrong, and the symptom is job 2 failing with something about
+   not finding the card.
+6. Dashboard → **Applications**: the row should be tagged `indeed`, not `linkedin`.
+
+### 12. Indeed — the things it must refuse
+
+Each of these is a decision, not a click, and each is worth checking by hand because
+getting one wrong is how a run wanders somewhere it shouldn't.
+
+1. Find a posting whose button says **Apply on company site**.
+   **Verify:** skipped, with a reason naming the company's own site. It must **not**
+   follow the link.
+2. Find a posting you have already applied to.
+   **Verify:** skipped as already applied. On a French site the button says
+   *Candidature envoyée* — check that one specifically, since an English-only match
+   would silently re-apply to every job you have already done.
+3. If Indeed shows a verification challenge at any point:
+   **Verify:** the run stops and says so. Nothing should attempt to solve or click
+   through it.
+
+### 13. ATS — matching, not literal matching
+
+1. Settings → **ATS score**. Paste a posting that says "Kubernetes" and make sure your
+   CV text says **K8s** and not "Kubernetes".
+   **Verify:** it counts as matched. Before this change it was reported missing, and the
+   advice was to add something already there.
+2. **Verify** the result now has three separated groups, and that they say different
+   things: *Would filter you out*, *Your profile says these; the document doesn't*, and
+   *In the posting, nowhere in your application*.
+3. Put a skill in **Profile → Skills** that your uploaded CV never mentions, and score
+   against a posting that wants it.
+   **Verify:** it appears under *your profile says these*, **not** under missing.
+4. Score with a posting that says "Fluent French is required" while your profile lists
+   no French.
+   **Verify:** a *Would filter you out* entry naming French, and a **Stated requirements**
+   bar in the breakdown.
+5. Add French to **Profile → Languages** and re-score.
+   **Verify:** that entry disappears and the requirements bar reads 100%.
+
+### 14. Regression check on existing features
 
 - Start a LinkedIn run with **dry run on**; confirm it still walks the modal and submits nothing.
 - Fetch a job description from the dashboard; confirm it still works.
 - Export a backup, then re-import it with **merge**; confirm nothing duplicates.
 - Generate a cover letter and a tailored CV; confirm `.tex` downloads still compile.
 
-### 12. Permissions
+### 15. Permissions
 
 1. `chrome://extensions` → **Details** for LosJobios.
-2. **Verify:** permissions are storage, tabs, scripting, alarms, activeTab, sidePanel, plus linkedin.com. The only addition is `sidePanel`.
+2. **Verify:** permissions are storage, tabs, scripting, alarms, activeTab, sidePanel, plus linkedin.com and `*.indeed.com`. Indeed needs the wildcard because its hosted apply form is on `smartapply.indeed.com` — a run cannot finish an Indeed application without it.
 3. **Verify:** no network permission is granted until AI is enabled.

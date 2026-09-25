@@ -33,7 +33,16 @@ export function isDisplayed(el: Element | null | undefined): el is HTMLElement {
  */
 export function isVisible(el: Element | null | undefined): el is HTMLElement {
   if (!isDisplayed(el)) return false
-  if (Number(getComputedStyle(el).opacity) === 0) return false
+
+  /*
+   * Only a *definite* zero counts as invisible. `Number('')` is 0, so reading
+   * this with `Number` treats an opacity the engine hasn't resolved as fully
+   * transparent — and then nothing on the page is ever clickable. Chrome
+   * always resolves it, so this changes nothing there; it matters wherever
+   * the CSSOM is partial, and "I don't know" should never mean "hidden".
+   */
+  const opacity = Number.parseFloat(getComputedStyle(el).opacity)
+  if (Number.isFinite(opacity) && opacity === 0) return false
 
   const rect = el.getBoundingClientRect()
   return rect.width > 0 || rect.height > 0

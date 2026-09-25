@@ -203,7 +203,7 @@ function EmptyJobs() {
       <SearchIcon className="mx-auto h-8 w-8 text-zinc-300 dark:text-zinc-700" />
       <p className="mt-3 text-sm font-medium">No saved jobs yet.</p>
       <p className="mx-auto mt-1 max-w-md text-xs text-zinc-500">
-        Open a LinkedIn job search and press <strong>Scan this page for jobs</strong> in the
+        Open a LinkedIn or Indeed job search and press <strong>Scan this page for jobs</strong> in the
         extension popup — or just start a run, and everything it sees lands here.
       </p>
       <Button variant="secondary" className="mt-4" disabled={busy} onClick={() => void scan()}>
@@ -663,6 +663,8 @@ function ScoreSummary({ score }: { score: AtsScore }) {
         ? 'text-amber-600 dark:text-amber-400'
         : 'text-red-600 dark:text-red-400'
 
+  const critical = score.suggestions.filter((suggestion) => suggestion.severity === 'critical')
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-end gap-3">
@@ -670,10 +672,46 @@ function ScoreSummary({ score }: { score: AtsScore }) {
         <span className="pb-1.5 text-xs text-zinc-500">out of 100</span>
       </div>
 
+      {/*
+        The things that get an application filtered out before a human sees
+        it, shown here rather than only in Settings — this is the screen
+        someone is on when they decide whether to apply at all.
+      */}
+      {critical.length ? (
+        <div>
+          <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400">
+            Would filter you out
+          </h4>
+          <ul className="flex list-disc flex-col gap-1 pl-4 text-xs text-zinc-600 dark:text-zinc-400">
+            {critical.map((suggestion) => (
+              <li key={suggestion.id}>{suggestion.title}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {score.easyWins.length ? (
+        <div>
+          <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+            Your profile says these; the document doesn&rsquo;t
+          </h4>
+          <div className="flex flex-wrap gap-1">
+            {score.easyWins.map((term) => (
+              <span
+                key={term}
+                className="rounded-md bg-sky-100 px-1.5 py-0.5 text-[11px] text-sky-800 dark:bg-sky-950 dark:text-sky-300"
+              >
+                {term}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {score.missing.length ? (
         <div>
           <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-            In the posting, not in your resume
+            In the posting, nowhere in your application
           </h4>
           <div className="flex flex-wrap gap-1">
             {score.missing.map((term) => (

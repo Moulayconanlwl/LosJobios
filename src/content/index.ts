@@ -2,6 +2,7 @@ import { registerHandlers, sendToBackground, type AutofillReport } from '@/lib/m
 import { getProfile, getSettings } from '@/lib/storage'
 import type { JobRef } from '@/lib/schema'
 import { waitFor } from './dom/query'
+import { IndeedAdapter } from './adapters/indeed'
 import { LinkedInAdapter } from './adapters/linkedin'
 import { UniversalAdapter } from './adapters/universal'
 import type { ApplyContext, SiteAdapter } from './adapters/types'
@@ -20,11 +21,16 @@ import { collectValidationErrors } from './validation'
  */
 
 const linkedin = new LinkedInAdapter()
+const indeed = new IndeedAdapter()
 const universal = new UniversalAdapter()
+
+/** Site adapters in priority order; the universal one is the fallback. */
+const SITE_ADAPTERS: SiteAdapter[] = [linkedin, indeed]
 
 function adapterFor(url: string): SiteAdapter {
   try {
-    if (linkedin.matches(url)) return linkedin
+    const match = SITE_ADAPTERS.find((candidate) => candidate.matches(url))
+    if (match) return match
   } catch {
     // A malformed URL just means we fall through to the universal adapter.
   }
@@ -162,6 +168,27 @@ registerHandlers({
     // description is actually available for AI question answering.
     const ctx = await buildContext(job, dryRun)
     return adapter.apply(ctx)
+  },
+
+  /**
+   * Pick up an application that carried on into a new page load.
+   *
+   * Deliberately does not call `openJob` first — there is no list on this
+   * page to open anything from. The background only sends this after seeing
+   * the tab land somewhere that continues an application.
+   */
+  'cs/continue-apply': async ({ job, dryRun, carried }) => {
+    resetController()
+
+    if (!adapter.continueApply) {
+      return {
+        result: 'failed' as const,
+        error: `Nothing here knows how to continue an application on ${location.hostname}.`,
+      }
+    }
+
+    const ctx = await buildContext(job, dryRun)
+    return adapter.continueApply(ctx, carried)
   },
 
   'cs/autofill-page': async (): Promise<AutofillReport> => {

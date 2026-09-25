@@ -24,7 +24,10 @@ const KNOWN_ATS: Array<{ match: RegExp; name: string }> = [
   { match: /(^|\.)workday\.com$/, name: 'Workday' },
   { match: /(^|\.)smartrecruiters\.com$/, name: 'SmartRecruiters' },
   { match: /(^|\.)welcometothejungle\.com$/, name: 'Welcome to the Jungle' },
-  { match: /(^|\.)indeed\.(com|fr)$/, name: 'Indeed' },
+  // Indeed runs one site per country across a mix of subdomains
+  // (fr.indeed.com) and country TLDs (indeed.co.uk), plus the separate host
+  // its hosted apply form is served from.
+  { match: /(^|\.)indeed\.[a-z]{2,3}(\.[a-z]{2})?$/, name: 'Indeed' },
   { match: /(^|\.)apec\.fr$/, name: 'APEC' },
   { match: /(^|\.)francetravail\.fr$/, name: 'France Travail' },
   { match: /(^|\.)hellowork\.com$/, name: 'HelloWork' },
@@ -32,6 +35,14 @@ const KNOWN_ATS: Array<{ match: RegExp; name: string }> = [
   { match: /(^|\.)personio\.de$/, name: 'Personio' },
   { match: /(^|\.)recruitee\.com$/, name: 'Recruitee' },
 ]
+
+/**
+ * What to call a site an adapter actually drives.
+ *
+ * Checked before the host list, because the adapter's own opinion is what will
+ * drive the page — naming anything else would be a promise this doesn't keep.
+ */
+const ADAPTER_NAMES: Record<string, string> = { linkedin: 'LinkedIn', indeed: 'Indeed' }
 
 function knownSite(hostname: string): string | null {
   return KNOWN_ATS.find((entry) => entry.match.test(hostname))?.name ?? null
@@ -49,7 +60,7 @@ export function describeSite(adapter: SiteAdapter): SiteReport {
   // The adapter's own opinion wins over the host list: it is what will
   // actually drive the page, so naming anything else would be a promise the
   // extension doesn't keep.
-  const named = adapter.id === 'linkedin' ? 'LinkedIn' : knownSite(hostname)
+  const named = ADAPTER_NAMES[adapter.id] ?? knownSite(hostname)
 
   if (fieldCount === 0) {
     return {

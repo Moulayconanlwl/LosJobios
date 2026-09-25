@@ -1,6 +1,6 @@
 # LosJobios
 
-A Chrome extension that applies to jobs for you. It fills LinkedIn Easy Apply forms end to end, autofills the application form on any career site, answers screening questions from your profile, writes a cover letter per posting, scores your CV against a job before you bother applying, and tracks every application in a dashboard you can filter and export.
+A Chrome extension that applies to jobs for you. It drives **LinkedIn Easy Apply** and **Indeed Apply** end to end, autofills the application form on any career site, answers screening questions from your profile, writes a cover letter per posting, scores your CV against a job before you bother applying, and tracks every application in a dashboard you can filter and export.
 
 Everything is stored locally in your browser. There is no server, no account, and nothing leaves your machine except the AI calls you explicitly enable.
 
@@ -8,7 +8,9 @@ Everything is stored locally in your browser. There is no server, no account, an
 
 ## Before you start
 
-**LinkedIn's User Agreement prohibits automated access, and they enforce it with account restrictions.** This is true of every tool of this kind, including the commercial ones. Nothing here is illegal, but the risk lands on whichever account runs it. Test on an account you can afford to lose, keep the daily cap low, and leave the pacing settings alone unless you're making them slower.
+**LinkedIn's and Indeed's terms both prohibit automated access, and both enforce it with account restrictions.** This is true of every tool of this kind, including the commercial ones. Nothing here is illegal, but the risk lands on whichever account runs it. Test on an account you can afford to lose, keep the daily cap low, and leave the pacing settings alone unless you're making them slower.
+
+**Nothing here touches a captcha.** A human-verification challenge is a statement that a human is required; when one appears, the run stops and hands the tab back to you. Applications that can only be completed on a company's own site are skipped rather than followed off the board.
 
 Dry run is on by default. It does everything except click the final Submit. Leave it on until you've watched a few applications go through and believe what it's doing.
 
@@ -43,7 +45,9 @@ The more of the profile is filled in — parsed or by hand — the fewer questio
 
 ## Run it
 
-1. Open a LinkedIn job search — `linkedin.com/jobs/search` or a `/jobs/collections/` page
+1. Open a job search on a supported board:
+   - LinkedIn — `linkedin.com/jobs/search` or a `/jobs/collections/` page
+   - Indeed — `indeed.com/jobs?q=…` (any country site: `fr.indeed.com`, `uk.indeed.com`, …)
 2. Click the extension icon
 3. Press **Start on this page**
 
@@ -87,7 +91,7 @@ Export before you uninstall, reinstall, or move machines.
 
 ## The jobs library
 
-Every posting a run sees is saved, so you can come back to it. **Scan this page for jobs** in the popup does the same thing without applying to anything — point it at a LinkedIn search and the whole list lands in the dashboard.
+Every posting a run sees is saved, so you can come back to it. **Scan this page for jobs** in the popup does the same thing without applying to anything — point it at a LinkedIn or Indeed search and the whole list lands in the dashboard.
 
 Open **Jobs & materials** in the dashboard, pick a posting, and everything that needs a specific job to work is there: its description, a cover letter, a resume rewritten for it, and its ATS score.
 
@@ -117,6 +121,20 @@ Templates are yours to replace: paste your own document under **Settings → Bac
 
 The **ATS score** tab in settings scores your CV against one posting, the way an applicant tracking system would: it pulls the terms the posting leans on, checks which ones appear anywhere in your CV or profile, compares your titles and years against what's asked, and checks that the document is machine-readable at all.
 
+It matches the way a real tracker does rather than literally:
+
+- **Acronyms and full terms are the same thing.** A CV saying "K8s" matches a posting saying "Kubernetes"; "ML" matches "machine learning". Without this the advice that follows a miss is "add Kubernetes" to a CV that already says it.
+- **Tense and plural don't count against you.** The posting says "managing", your CV says "managed" — that is not a gap, and scoring it as one sends you to fix something that isn't broken.
+- **Terms still never match inside a longer word.** "Java" does not match inside "JavaScript", and short whole terms like `Go`, `data` and `AWS` are never reduced.
+
+And it separates three different kinds of problem, worst first:
+
+- **Would filter you out** — a stated requirement nothing evidences (a degree, a language, a licence, the right to work), a missing email in the document itself, no section headings, or falling short of the years the posting screens on.
+- **Your profile says it; the document doesn't** — the cheapest points on the page. The tracker parses the file you upload, not this extension's profile. Nothing here has to *become true*; the CV just has to say it.
+- **Costs you ranking** — genuine keyword gaps, title wording, and a seniority mismatch that keyword overlap is blind to ("Junior Developer" and "Senior Developer" share every meaningful word).
+
+It also checks the things that quietly break a parser: no dates beside your roles (trackers compute your years from those), a layout that extracts as one unbroken block (the signature of a two-column CV), and a damaged PDF text layer.
+
 The score is computed on this machine. No key, no network, same answer every time — an ATS is a keyword matcher, and that's a mechanical thing to model rather than something to ask a model about. You get the number, the terms you matched, the terms you didn't, and what to do about it.
 
 The fastest way in: open a posting in a tab and press **Score this job against my CV** in the popup. It scrapes the description off the page and opens the scorer with it filled in.
@@ -145,7 +163,7 @@ npm run icons      # regenerate the PNG icons
 src/
 ├── background/     service worker — run engine, message routing, tab orchestration
 ├── content/        injected into pages
-│   ├── adapters/   linkedin (Easy Apply driver) + universal (any form)
+│   ├── adapters/   linkedin (Easy Apply), indeed (Indeed Apply) + universal (any form)
 │   ├── dom/        query, fill and pacing primitives
 │   ├── fields.ts   turns a live form into a list of answerable questions
 │   └── filler.ts   decides what goes in a field and writes it there
@@ -174,6 +192,12 @@ src/
 **Every background → content command resolves the frame first.** `resolveContentFrame` in `background/frames.ts` is the one way to address a tab: it verifies a claim with a ping before trusting it and falls back to frame 0 when there isn't one. Starting a run waits up to 8s for a claim, because a run against the wrong frame is worthless; one-shot commands off a popup click pass no wait, because a page that splits its content claimed on load long before the user reached the popup, and waiting would stall every ordinary page for nothing. An earlier version of "Autofill this page" skipped this and sent to frame 0 — on a signed-in LinkedIn job that's the empty shell, so it reported "filled 0 fields" forever.
 
 **Frame claims go in `chrome.storage.session`, not a module-level Map.** Same reason run state does: the worker dies between the content script's one-time claim and the run that needs it, and an in-memory claim is silently lost in that window — which then falls back to frame 0 and looks *exactly* like the original bug. Don't "simplify" this back into a Map. Equally, don't add a `tabs.onUpdated` listener that clears claims on `status === 'loading'`: LinkedIn fires that for its own URL normalization and on every job click, so it wipes valid claims mid-run. Staleness self-heals instead — each page load re-announces, and `resolveContentFrame` pings a claimed frame before trusting it.
+
+**Indeed's apply flow navigates; LinkedIn's does not — and that difference shapes the run engine.** Easy Apply is a modal on the page you were already on, so one `cs/apply-job` call does the whole thing. Indeed Apply is a separate page load (`smartapply.indeed.com`), which tears the content script down *mid-call*. So the flow is split: the adapter clicks Apply on the listing and returns `handoff`, and the background waits for the tab to settle, injects a fresh script and sends `cs/continue-apply` with the field counts earned so far. The reply carrying `handoff` is the tidy path, never a guarantee — on a fast navigation the page dies before it is delivered, so `processJob` also treats *losing the receiver while the tab now sits on a continuation URL* as the same event. Exactly one hop is allowed; a second would mean a flow this doesn't understand, and looping on it against a live site is how you submit something twice. Between jobs the run navigates back to the stored `boardUrl` rather than going back through history, because the confirmation page is usually reached by redirect and "back" can mean the form again.
+
+**`isApplyContinuation` is a security boundary, not routing.** It decides where an application already in flight may carry on typing the user's real details unattended. The host test comes first and is absolute: a path containing `indeedapply` on somebody else's domain is not an Indeed form, it is a page claiming to be one. Same for `detectJobBoard`, which decides where the extension will scrape and click on its own initiative. Both are anchored at both ends (`(^|\.)indeed\.…$`), both require https, and `test/job-board.test.ts` pins the lookalikes.
+
+**Read paths use `isDisplayed`; click paths use `isVisible`.** The difference is a painted box, and it is not cosmetic: a tab opened in the background — which is exactly how the dashboard fetches a posting — is never laid out, so every real element reports 0×0. A read that insists on a painted box returns nothing from a page whose content is sitting right there, which is the bug that once broke every downstream feature. A *click*, on the other hand, legitimately needs a target with size, because a click on a zero-size element goes nowhere. Getting this backwards in either direction is silent.
 
 **Resume parsing only ever fills empty fields, never overwrites.** `mergeParsedResume` checks each profile field before writing to it — heuristic and AI results alike. This is what makes it safe to upload a CV, edit a few fields by hand, and click "Parse resume" again later without losing the edits. `pdfjs-dist` and `mammoth` are dynamically imported from `resumeExtract.ts`, which only the options page reaches — check a build's chunk sizes if you touch this, since pulling either library into the content script or background bundle by accident would bloat both by several hundred KB for no benefit.
 
@@ -205,7 +229,7 @@ src/
 | `tabs`, `scripting` | Driving the job tab and injecting the autofill script |
 | `alarms` | Restarting a run after the service worker is killed |
 | `activeTab` | Universal autofill, granted per click — not standing access to every site |
-| `linkedin.com` | The only site with a standing host permission |
+| `linkedin.com`, `*.indeed.com` | The two boards a run can drive. Indeed needs the wildcard because its hosted apply form is served from `smartapply.indeed.com`, a separate page load from the listing |
 | `generativelanguage.googleapis.com` | **Optional.** Requested only when you turn on AI |
 
 Universal autofill deliberately uses `activeTab` plus a user gesture rather than `<all_urls>`. Same capability, far smaller blast radius.
@@ -220,7 +244,7 @@ Milestone 1 — profile, CV parsing, autofill, the Easy Apply engine and applica
 
 `npm test` covers field classification, option and subject matching, React-safe value writes, form detection against the fixture, resume-parsing heuristics and merge logic, which file input gets the résumé, ATS keyword extraction and scoring, the cover-letter and review prompts, frame resolution, the list-editing inputs, and CSV escaping.
 
-What automated tests can't reach: the LinkedIn adapter's selectors, PDF/DOCX extraction, and the assembled pages (popup, options, dashboard) all need a real browser with the extension loaded — see the checklist below.
+What automated tests can't reach: **every site adapter's selectors** — LinkedIn's and Indeed's alike — PDF/DOCX extraction, and the assembled pages (popup, options, dashboard) all need a real browser with the extension loaded. The adapters' *decisions* are tested (what gets skipped, what gets declined, what the fallbacks are); the CSS selectors those decisions run on can only be confirmed against the live site. See the checklist below.
 
 ### First-run checklist
 
@@ -228,8 +252,10 @@ What automated tests can't reach: the LinkedIn adapter's selectors, PDF/DOCX ext
 2. Open `test/fixtures/career-form.html`, click **Autofill this page**, confirm fields populate *and still hold their values after clicking elsewhere*
 3. Open a real job posting, press **Score this job against my CV**, confirm the scorer opens with the description filled in and the missing terms look right
 4. With dry run **on**, run against a LinkedIn search and watch it walk the full modal
-5. Turn dry run off, set the daily cap to 1, and send one real application
-6. Raise the cap and check the dashboard rows and CSV export
+5. With dry run **on**, run against an Indeed search. Watch for three things specifically: the run follows the Apply button onto the hosted form, it comes *back* to the search page before the next job, and it stops at Submit rather than clicking it
+6. Point it at an Indeed posting that says **Apply on company site** and confirm the run skips it rather than following the link off Indeed
+7. Turn dry run off, set the daily cap to 1, and send one real application
+8. Raise the cap and check the dashboard rows and CSV export
 
 ## License
 

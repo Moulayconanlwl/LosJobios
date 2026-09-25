@@ -62,13 +62,3 @@ export async function ensureContentScript(tabId: number): Promise<boolean> {
 
   return false
 }
-
-export function isLinkedInJobsPage(url: string | undefined): boolean {
-  if (!url) return false
-  try {
-    const parsed = new URL(url)
-    return /(^|\.)linkedin\.com$/.test(parsed.hostname) && parsed.pathname.startsWith('/jobs/')
-  } catch {
-    return false
-  }
-}

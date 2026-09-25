@@ -21,6 +21,21 @@ export type ApplyOutcome =
   | { result: 'skipped'; reason: string }
   | { result: 'blocked'; question: PendingQuestion }
   | { result: 'failed'; error: string }
+  /**
+   * The application continues on a page this content script won't live to
+   * see. Indeed does this: clicking Apply navigates the tab to a separate
+   * hosted form, which tears down the script mid-call.
+   *
+   * The background answers this by waiting for the tab to settle, injecting a
+   * fresh script and sending `cs/continue-apply`. Counts already earned on
+   * the first page are carried across so the tracked application isn't
+   * reported as having answered nothing.
+   *
+   * Because the navigation can outrun the reply, the background treats a
+   * dropped connection *plus* a tab now sitting on a continuation URL as the
+   * same thing — this variant is the tidy path, not the only one.
+   */
+  | { result: 'handoff'; questionsAnswered: number; aiAnswersUsed: number }
 
 export type AnswerRequest = {
   question: string
@@ -132,6 +147,14 @@ export type MessageMap = {
     res: { jobs: JobRef[]; emptyReason?: string }
   }
   'cs/apply-job': { req: { job: JobRef; dryRun: boolean }; res: ApplyOutcome }
+  /**
+   * Pick up an application that carried on into a new page load. `carried`
+   * are the field counts already earned before the navigation.
+   */
+  'cs/continue-apply': {
+    req: { job: JobRef; dryRun: boolean; carried: { questionsAnswered: number; aiAnswersUsed: number } }
+    res: ApplyOutcome
+  }
   'cs/autofill-page': { req: Record<string, never>; res: AutofillReport }
   /**
    * Work out what *would* be filled, and report it for review. Writes

@@ -362,7 +362,7 @@ function EmptyState({ hasAny }: { hasAny: boolean }) {
       <p className="mx-auto mt-1 max-w-md text-xs text-zinc-500">
         {hasAny
           ? 'Try clearing the search, or tick “Show dry runs” if you’ve only done test runs so far.'
-          : 'Open a LinkedIn job search, click the extension, and press Start. Dry run is on by default, so the first pass won’t submit anything.'}
+          : 'Open a LinkedIn or Indeed job search, click the extension, and press Start. Dry run is on by default, so the first pass won’t submit anything.'}
       </p>
     </div>
   )

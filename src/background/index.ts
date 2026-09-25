@@ -12,6 +12,7 @@ import {
   setCapturedJob,
 } from '@/lib/storage'
 import { claimContentFrame, resolveContentFrame } from './frames'
+import { detectJobBoard } from './boards'
 import { ensureContentScript, getActiveTab, isInjectable } from './injector'
 import {
   answerPending,
@@ -104,6 +105,7 @@ async function scrapeDescription(tabId: number, timeoutMs = 12_000): Promise<str
         // it can close over nothing from up here.
         func: () => {
           const selectors = [
+            // LinkedIn, across its authenticated and signed-out layouts.
             '#job-details',
             '.jobs-description__content',
             '.jobs-description-content__text',
@@ -112,6 +114,12 @@ async function scrapeDescription(tabId: number, timeoutMs = 12_000): Promise<str
             '.description__text',
             '[class*="jobs-description"]',
             '[class*="description__text"]',
+            // Indeed. `#jobDescriptionText` is the stable one and has
+            // outlived several redesigns of everything around it.
+            '#jobDescriptionText',
+            '.jobsearch-JobComponent-description',
+            '#vjs-desc',
+            // Anything else.
             'article',
             'main',
           ]
@@ -242,7 +250,10 @@ registerHandlers({
         company: context.company,
         url: context.url,
         description: context.description,
-        source: tab.url?.includes('linkedin.com') ? ('linkedin' as const) : ('universal' as const),
+        // Tag it with the board when the URL is one, so the dashboard's
+        // already-applied check and its source filter agree with what a run
+        // would have recorded for the same posting.
+        source: detectJobBoard(tab.url)?.id ?? ('universal' as const),
         savedAt: Date.now(),
       },
     ])
@@ -337,7 +348,7 @@ registerHandlers({
         company: job.company,
         location: job.location,
         url: job.url,
-        source: 'linkedin' as const,
+        source: detectJobBoard(tab.url)?.id ?? ('universal' as const),
         savedAt: now,
       })),
     )

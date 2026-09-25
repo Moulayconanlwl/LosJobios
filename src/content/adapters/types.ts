@@ -20,6 +20,12 @@ export type ApplyContext = {
   report(message: string): void
 }
 
+/** Field counts carried across a page boundary mid-application. */
+export type ApplyCounts = {
+  questionsAnswered: number
+  aiAnswersUsed: number
+}
+
 export interface SiteAdapter {
   readonly id: string
 
@@ -51,6 +57,17 @@ export interface SiteAdapter {
 
   /** Run the application flow for the currently-open job. */
   apply(ctx: ApplyContext): Promise<ApplyOutcome>
+
+  /**
+   * Resume an application that continued onto a page this script didn't start
+   * on — a hosted apply form the Apply button navigated to.
+   *
+   * Only adapters whose flow leaves the listing page implement this. The
+   * background calls it after re-establishing a content script on the new
+   * page, passing the field counts already earned so the tracked application
+   * reflects the whole flow rather than just its second half.
+   */
+  continueApply?(ctx: ApplyContext, carried: ApplyCounts): Promise<ApplyOutcome>
 
   /** Best-effort job description text from the current page. */
   jobDescription(): string

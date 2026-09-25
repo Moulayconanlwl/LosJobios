@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { GeminiProvider, hasGeminiPermission } from '@/lib/ai/gemini'
 import type { ResumeReview } from '@/lib/ai/provider'
-import { scoreResumeAgainstJob, type AtsScore } from '@/lib/ats'
+import { scoreResumeAgainstJob, type AtsScore, type AtsSeverity, type AtsSuggestion } from '@/lib/ats'
 import { getCapturedJob } from '@/lib/storage'
 import { Banner, Button, Card, Field, Textarea, Input, cx } from '../../components/ui'
 import { useProfile, useSettings } from '../../hooks'
@@ -37,18 +37,82 @@ function toneFor(score: number): { bar: string; text: string; label: string } {
   }
 }
 
-function Chip({ term, tone }: { term: string; tone: 'good' | 'bad' }) {
+function Chip({ term, tone }: { term: string; tone: 'good' | 'bad' | 'easy' }) {
+  const tones = {
+    good: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+    bad: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+    easy: 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300',
+  }
+
   return (
     <span
       className={cx(
         'inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium',
-        tone === 'good'
-          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-          : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+        tones[tone],
       )}
     >
       {term}
     </span>
+  )
+}
+
+/**
+ * Severity, shown as a word rather than only a colour.
+ *
+ * Colour alone would carry the whole meaning of "this is what gets you
+ * filtered out", which is exactly the kind of thing that disappears for a
+ * colour-blind reader or in a screenshot.
+ */
+const SEVERITY_STYLE: Record<AtsSeverity, { label: string; className: string }> = {
+  critical: {
+    label: 'Filters you out',
+    className: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300',
+  },
+  important: {
+    label: 'Costs you ranking',
+    className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+  },
+  polish: {
+    label: 'Worth a look',
+    className: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+  },
+}
+
+function SuggestionList({ suggestions }: { suggestions: AtsSuggestion[] }) {
+  if (!suggestions.length) return null
+
+  return (
+    <div>
+      <h3 className="mb-2 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+        What to change, worst first
+      </h3>
+      <ul className="flex flex-col gap-2.5">
+        {suggestions.map((suggestion) => {
+          const severity = SEVERITY_STYLE[suggestion.severity]
+          return (
+            <li
+              key={suggestion.id}
+              className="rounded-md border border-zinc-200 p-2.5 dark:border-zinc-800"
+            >
+              <div className="mb-1 flex flex-wrap items-baseline gap-2">
+                <span
+                  className={cx(
+                    'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                    severity.className,
+                  )}
+                >
+                  {severity.label}
+                </span>
+                <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200">
+                  {suggestion.title}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-600 dark:text-zinc-400">{suggestion.detail}</p>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 
@@ -223,10 +287,27 @@ function ScoreCard({ result }: { result: AtsScore }) {
           </div>
         ) : null}
 
+        {result.easyWins.length ? (
+          <div>
+            <h3 className="mb-1 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+              Your profile says these; the document doesn&rsquo;t
+            </h3>
+            <p className="mb-2 text-xs text-zinc-500">
+              The tracker reads the file you upload, not this profile. Nothing here has to become
+              true &mdash; the resume just has to say it.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {result.easyWins.map((term) => (
+                <Chip key={term} term={term} tone="easy" />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {result.missing.length ? (
           <div>
             <h3 className="mb-2 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-              In the posting, not in your resume
+              In the posting, nowhere in your application
             </h3>
             <div className="flex flex-wrap gap-1.5">
               {result.missing.map((term) => (
@@ -236,13 +317,7 @@ function ScoreCard({ result }: { result: AtsScore }) {
           </div>
         ) : null}
 
-        {result.notes.length ? (
-          <ul className="flex list-disc flex-col gap-1.5 pl-4 text-xs text-zinc-600 dark:text-zinc-400">
-            {result.notes.map((note) => (
-              <li key={note}>{note}</li>
-            ))}
-          </ul>
-        ) : null}
+        <SuggestionList suggestions={result.suggestions} />
       </div>
     </Card>
   )

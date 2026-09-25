@@ -18,7 +18,31 @@ import type { Profile } from './schema'
  * one.
  */
 
-export type AtsComponentId = 'keywords' | 'title' | 'experience' | 'parseability'
+export type AtsComponentId =
+  | 'keywords'
+  | 'title'
+  | 'experience'
+  | 'parseability'
+  | 'requirements'
+
+/**
+ * How much a suggestion costs to ignore.
+ *
+ * Ordered so the list can be read top-down and stopped at any point: a
+ * `critical` is something that gets the application filtered out before a
+ * human sees it, an `important` is a real ranking loss, and a `polish` is
+ * worth doing when the other two are clear.
+ */
+export type AtsSeverity = 'critical' | 'important' | 'polish'
+
+export type AtsSuggestion = {
+  id: string
+  severity: AtsSeverity
+  /** A few words, for a heading. */
+  title: string
+  /** What to actually change, in full. */
+  detail: string
+}
 
 export type AtsComponent = {
   id: AtsComponentId
@@ -42,6 +66,16 @@ export type AtsScore = {
   components: AtsComponent[]
   matched: string[]
   missing: string[]
+  /**
+   * Terms the posting wants that your *profile* already claims but your
+   * resume text never says. These are the cheapest points on the page:
+   * nothing has to become true, the document just has to say what is already
+   * true of you.
+   */
+  easyWins: string[]
+  /** Ranked, actionable. `notes` is the same content flattened. */
+  suggestions: AtsSuggestion[]
+  /** Kept for callers that render a plain list. Derived from `suggestions`. */
   notes: string[]
 }
 
@@ -53,10 +87,11 @@ export type AtsInput = {
 }
 
 const WEIGHTS: Record<AtsComponentId, number> = {
-  keywords: 55,
-  title: 15,
-  experience: 15,
-  parseability: 15,
+  keywords: 50,
+  title: 14,
+  experience: 13,
+  parseability: 13,
+  requirements: 10,
 }
 
 /**
@@ -149,16 +184,149 @@ function normalizeTokens(value: string): string[] {
 }
 
 /**
- * A space-padded token stream. Padding is what makes `containsTerm` an exact
- * token-sequence match rather than a substring one — without it "java" would
- * happily match inside "javascript".
+ * Suffixes stripped when comparing two words, longest first.
+ *
+ * The posting says "managing a team", the resume says "managed a team", and a
+ * literal matcher scores that a miss — which is both wrong and demoralising,
+ * because there is nothing to fix. This is not real stemming; it is the
+ * smallest reduction that collapses the tense and plural differences that
+ * actually occur between a job ad and a CV.
  */
-function haystackOf(...parts: string[]): string {
-  return ` ${normalizeTokens(parts.join(' ')).join(' ')} `
+const SUFFIXES = ['ments', 'ment', 'ions', 'ion', 'ings', 'ing', 'ers', 'er', 'ies', 'ed', 'es', 's']
+
+/** The shortest a reduced word may be. Below this, suffix-stripping is noise. */
+const MIN_STEM = 3
+
+/**
+ * Reduce a token to its comparison form.
+ *
+ * The trailing `e` comes off last and unconditionally, which is what makes
+ * "manage", "managed", "managing", "manager" and "management" all land on the
+ * same stem — without it "management" reduces to "manage" and "managing" to
+ * "manag", and the pair still misses.
+ *
+ * Short tokens are returned untouched. That is deliberate and load-bearing:
+ * "go", "java", "ios" and "data" are whole terms, and stripping letters off
+ * them is how "Go" the language starts matching "going".
+ */
+export function stem(token: string): string {
+  if (token.length <= 4) return token
+
+  for (const suffix of SUFFIXES) {
+    if (!token.endsWith(suffix)) continue
+    const stripped = token.slice(0, -suffix.length)
+    if (stripped.length >= MIN_STEM) return dropTrailingE(stripped)
+  }
+
+  return dropTrailingE(token)
 }
 
-function containsTerm(haystack: string, term: string): boolean {
-  return haystack.includes(` ${term} `)
+function dropTrailingE(token: string): string {
+  return token.length > MIN_STEM && token.endsWith('e') ? token.slice(0, -1) : token
+}
+
+/**
+ * Terms an applicant tracking system's own synonym list would treat as one.
+ *
+ * This is the single biggest source of false misses in a naive matcher: a
+ * resume saying "K8s" scores zero against a posting saying "Kubernetes", and
+ * the advice that follows — "add Kubernetes" — is advice to write down
+ * something you already wrote down. Each row is a set of writings of one
+ * thing, never a set of related things: "React" and "React Native" are two
+ * skills and are deliberately not in here.
+ */
+const EQUIVALENTS: string[][] = [
+  ['javascript', 'js', 'ecmascript'],
+  ['typescript', 'ts'],
+  ['kubernetes', 'k8s'],
+  ['machine learning', 'ml'],
+  ['artificial intelligence', 'ai'],
+  ['natural language processing', 'nlp'],
+  ['continuous integration', 'ci'],
+  ['continuous delivery', 'continuous deployment', 'cd'],
+  ['amazon web services', 'aws'],
+  ['google cloud platform', 'gcp'],
+  ['microsoft azure', 'azure'],
+  ['postgresql', 'postgres'],
+  ['mongodb', 'mongo'],
+  ['kubernetes cluster', 'k8s cluster'],
+  ['infrastructure as code', 'iac'],
+  ['user interface', 'ui'],
+  ['user experience', 'ux'],
+  ['quality assurance', 'qa'],
+  ['product manager', 'product management', 'pm'],
+  ['software as a service', 'saas'],
+  ['rest api', 'restful api', 'rest'],
+  ['object oriented', 'oop'],
+  ['test driven development', 'tdd'],
+  ['version control', 'git'],
+  ['github actions', 'gh actions'],
+  ['dot net', '.net', 'dotnet'],
+  ['c sharp', 'c#'],
+  ['golang', 'go'],
+  ['node.js', 'nodejs', 'node'],
+  ['react.js', 'reactjs', 'react'],
+  ['vue.js', 'vuejs', 'vue'],
+  ['deep learning', 'dl'],
+  ['business intelligence', 'bi'],
+  ['extract transform load', 'etl'],
+  ['service level agreement', 'sla'],
+  ['software development kit', 'sdk'],
+]
+
+/** term (stemmed) → every stemmed writing of the same thing, including itself. */
+const ALIASES: Map<string, string[]> = (() => {
+  const map = new Map<string, string[]>()
+  for (const group of EQUIVALENTS) {
+    const stemmed = group.map(stemPhrase)
+    for (const member of stemmed) {
+      // A term appearing in two groups keeps both sets rather than losing one.
+      map.set(member, [...(map.get(member) ?? []), ...stemmed])
+    }
+  }
+  return map
+})()
+
+function stemPhrase(phrase: string): string {
+  const tokens = normalizeTokens(phrase)
+  // An alias that normalizes away entirely (".net" → "net") keeps its literal
+  // form rather than becoming the empty string, which would match everything.
+  if (!tokens.length) return phrase.toLowerCase().trim()
+  return tokens.map(stem).join(' ')
+}
+
+/**
+ * Every stemmed word and adjacent word-pair in some text.
+ *
+ * A set of exact keys rather than a padded string: the padding trick made
+ * "java" not match inside "javascript", which a set does by construction, and
+ * this also stops being a substring scan of the whole resume per keyword.
+ */
+function matchIndex(...parts: string[]): Set<string> {
+  const tokens = normalizeTokens(parts.join(' ')).map(stem)
+  const index = new Set<string>()
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i]
+    if (!token) continue
+    index.add(token)
+
+    const next = tokens[i + 1]
+    if (next) index.add(`${token} ${next}`)
+  }
+
+  return index
+}
+
+/** Is this term — or any other writing of it — present? */
+function containsTerm(index: Set<string>, term: string): boolean {
+  const key = stemPhrase(term)
+  if (index.has(key)) return true
+
+  for (const alias of ALIASES.get(key) ?? []) {
+    if (index.has(alias)) return true
+  }
+  return false
 }
 
 function isMeaningful(token: string): boolean {
@@ -291,9 +459,10 @@ export function requiredYears(jobDescription: string): number | null {
   return best
 }
 
-function candidateHaystack(input: AtsInput): string {
+/** Everything a parser would read about the candidate, from both sources. */
+function candidateIndex(input: AtsInput): Set<string> {
   const { profile } = input
-  return haystackOf(
+  return matchIndex(
     input.resumeText,
     profile.headline,
     profile.summary,
@@ -306,16 +475,44 @@ function candidateHaystack(input: AtsInput): string {
   )
 }
 
+/**
+ * Seniority words, weakest first.
+ *
+ * A separate axis from the rest of the title, because it is the part a
+ * recruiter filters on hardest and the part keyword overlap is blindest to:
+ * "Junior Developer" and "Senior Developer" share every meaningful word.
+ */
+const SENIORITY = [
+  { rank: 1, words: ['intern', 'internship', 'stage', 'stagiaire', 'trainee', 'apprentice', 'alternance'] },
+  { rank: 2, words: ['junior', 'entry', 'graduate', 'débutant', 'debutant'] },
+  { rank: 3, words: ['mid', 'intermediate', 'confirmé', 'confirme'] },
+  { rank: 4, words: ['senior', 'sr', 'experienced'] },
+  { rank: 5, words: ['staff', 'lead', 'principal', 'head', 'director', 'manager', 'chief'] },
+]
+
+/** The highest seniority word present, or null when nothing says. */
+function seniorityOf(value: string): { rank: number; word: string } | null {
+  const tokens = new Set(normalizeTokens(value))
+  let best: { rank: number; word: string } | null = null
+
+  for (const level of SENIORITY) {
+    for (const word of level.words) {
+      if (tokens.has(word) && (!best || level.rank > best.rank)) best = { rank: level.rank, word }
+    }
+  }
+  return best
+}
+
 function titleComponent(jobTitle: string, profile: Profile): AtsComponent | null {
   const words = Array.from(new Set(normalizeTokens(jobTitle).filter(isMeaningful)))
   if (!words.length) return null
 
-  const haystack = haystackOf(
+  const index = matchIndex(
     profile.currentTitle,
     profile.headline,
     ...profile.experience.map((entry) => entry.title),
   )
-  const hits = words.filter((word) => containsTerm(haystack, word))
+  const hits = words.filter((word) => containsTerm(index, word))
 
   return {
     id: 'title',
@@ -345,26 +542,99 @@ function experienceComponent(required: number, profile: Profile): AtsComponent {
   }
 }
 
-function parseabilityComponent(resumeText: string): { component: AtsComponent; notes: string[] } {
+/** A month-and-year in the forms a resume writes one. */
+const DATE_RE =
+  /\b(19|20)\d{2}\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|janv|févr|fevr|mars|avr|mai|juin|juil|août|aout|sept|oct|nov|déc|dec)[a-zé]*\.?\s*(19|20)?\d{2}\b/i
+
+/**
+ * Characters that turn up when a PDF's text layer is broken — ligature and
+ * bullet glyphs that didn't map back to letters. A few are normal; a lot means
+ * the parser on the other end is reading gibberish too.
+ */
+const NOISE_RE = /[�-•●▪]/g
+
+function parseabilityComponent(resumeText: string): {
+  component: AtsComponent
+  suggestions: AtsSuggestion[]
+} {
   const text = resumeText.trim()
   const sections = SECTION_PATTERNS.filter((pattern) => pattern.test(text)).length
+  const noiseRatio = text.length ? (text.match(NOISE_RE)?.length ?? 0) / text.length : 0
 
-  const checks = [
+  // A resume with no line breaks at all is the signature of a multi-column or
+  // table layout: the extractor got one run of text and so will the tracker.
+  const lines = text.split('\n').filter((line) => line.trim().length > 0)
+  const singleBlob = text.length > 600 && lines.length < 5
+
+  const checks: Array<{ ok: boolean; suggestion: AtsSuggestion }> = [
     {
       ok: text.length >= 300,
-      note: 'Almost no resume text was read. Upload a PDF or DOCX under Profile → Resume, or paste the text, so there is something to match against.',
+      suggestion: {
+        id: 'no-resume-text',
+        severity: 'critical',
+        title: 'No resume text to match',
+        detail:
+          'Almost no resume text was read. Upload a PDF or DOCX under Profile → Resume, or paste the text, so there is something to match against.',
+      },
     },
     {
       ok: EMAIL_RE.test(text),
-      note: 'No email address in the resume text — most trackers key your record off the one they parse out of the document.',
+      suggestion: {
+        id: 'no-email',
+        severity: 'critical',
+        title: 'No email in the document',
+        detail:
+          'No email address in the resume text — most trackers key your record off the one they parse out of the document, not the one you type into the form.',
+      },
     },
     {
       ok: PHONE_RE.test(text),
-      note: 'No phone number in the resume text.',
+      suggestion: {
+        id: 'no-phone',
+        severity: 'important',
+        title: 'No phone number in the document',
+        detail: 'No phone number in the resume text.',
+      },
     },
     {
       ok: sections >= 2,
-      note: 'Fewer than two standard section headings found. Parsers split a resume on “Experience”, “Education” and “Skills” — without them, everything lands in one undifferentiated blob.',
+      suggestion: {
+        id: 'no-sections',
+        severity: 'critical',
+        title: 'Parsers can’t find your sections',
+        detail:
+          'Fewer than two standard section headings found. Parsers split a resume on “Experience”, “Education” and “Skills” — without them, everything lands in one undifferentiated blob.',
+      },
+    },
+    {
+      ok: DATE_RE.test(text),
+      suggestion: {
+        id: 'no-dates',
+        severity: 'important',
+        title: 'No employment dates found',
+        detail:
+          'No dates were found in the resume text. Trackers compute your years of experience from the dates beside each role — with none, that calculation comes out at zero however long you have worked.',
+      },
+    },
+    {
+      ok: !singleBlob,
+      suggestion: {
+        id: 'single-blob',
+        severity: 'important',
+        title: 'Layout extracts as one block',
+        detail:
+          'The whole resume came out as one unbroken run of text, which is what a two-column or table-based layout does to a parser. A single-column layout reads back in the order you wrote it.',
+      },
+    },
+    {
+      ok: noiseRatio < 0.02,
+      suggestion: {
+        id: 'extraction-noise',
+        severity: 'important',
+        title: 'The PDF’s text layer is damaged',
+        detail:
+          'The extracted text carries a lot of unmappable characters, which usually means the PDF’s fonts aren’t embedded properly. Re-export it — "Save as PDF" from your editor rather than printing to PDF — or a tracker will read the same gibberish.',
+      },
     },
   ]
 
@@ -378,31 +648,157 @@ function parseabilityComponent(resumeText: string): { component: AtsComponent; n
       weight: WEIGHTS.parseability,
       detail: `${passed} of ${checks.length} parser checks pass.`,
     },
-    notes: checks.filter((check) => !check.ok).map((check) => check.note),
+    suggestions: checks.filter((check) => !check.ok).map((check) => check.suggestion),
+  }
+}
+
+/**
+ * Requirements that are screened as a yes/no rather than ranked.
+ *
+ * These are the ones that get an application rejected outright while the
+ * keyword score looks healthy, which is exactly the failure a keyword-only
+ * view can't explain. Each is detected in the posting *and* evidenced against
+ * the candidate, and a requirement the posting never states is never counted.
+ *
+ * `demand` is deliberately narrow. A posting that merely uses the word
+ * "French" is not asking for French; one that says "fluent French" is.
+ */
+const HARD_REQUIREMENTS: Array<{
+  id: string
+  label: string
+  demand: RegExp
+  evidence: RegExp
+  advice: string
+}> = [
+  {
+    id: 'degree',
+    label: 'a degree',
+    demand:
+      /\b(bachelor'?s?|master'?s?|b\.?sc|m\.?sc|phd|doctorate|degree required|licence|dipl[oô]me|bac\s*\+\s*[35])\b/i,
+    evidence: /\b(bachelor|master|b\.?sc|m\.?sc|phd|doctorate|degree|licence|dipl[oô]me|university|universit[ée]|ing[ée]nieur|bac\s*\+)\b/i,
+    advice:
+      'The posting names a degree. Make sure your Education section spells out the qualification and the institution — a parser that finds no degree records none.',
+  },
+  {
+    id: 'french',
+    label: 'French',
+    demand: /\b(fluent|native|courant|bilingue|bilingual|professional)\s+(in\s+)?(french|fran[çc]ais)\b|\bfrench\s+(is\s+)?(required|mandatory|essential)\b|\bfran[çc]ais\s+courant\b/i,
+    evidence: /\b(french|fran[çc]ais)\b/i,
+    advice:
+      'The posting asks for French. Add it to Profile → Languages with the level, and name it on the resume itself — the tracker reads the document, not the form.',
+  },
+  {
+    id: 'english',
+    label: 'English',
+    demand: /\b(fluent|native|professional|business)\s+english\b|\benglish\s+(is\s+)?(required|mandatory|essential)\b|\banglais\s+courant\b/i,
+    evidence: /\b(english|anglais|toeic|toefl|ielts)\b/i,
+    advice:
+      'The posting asks for English. Say so explicitly in a Languages line — a resume written in English is not the same as a resume that states an English level, and only one of those is parseable.',
+  },
+  {
+    id: 'driving-licence',
+    label: 'a driving licence',
+    demand: /\b(driving licen[cs]e|driver'?s licen[cs]e|permis de conduire|permis b)\b/i,
+    evidence: /\b(driving licen[cs]e|driver'?s licen[cs]e|permis de conduire|permis b)\b/i,
+    advice:
+      'The posting requires a driving licence. If you hold one, put it on the resume in as many words — this is screened as a yes/no.',
+  },
+  {
+    id: 'work-authorisation',
+    label: 'work authorisation',
+    demand:
+      /\b(work authorization|work authorisation|right to work|work permit|visa sponsorship is not|no sponsorship|must be eligible to work|titre de s[ée]jour|autorisation de travail)\b/i,
+    evidence: /\b(citizen|nationality|work permit|right to work|visa|permanent resident|nationalit[ée]|ressortissant)\b/i,
+    advice:
+      'The posting screens on the right to work. If you already hold it, state it in one line — this is a filter, and an unstated answer reads the same as a no.',
+  },
+  {
+    id: 'clearance',
+    label: 'a security clearance',
+    demand: /\b(security clearance|clearance required|habilitation d[ée]fense)\b/i,
+    evidence: /\b(security clearance|clearance|habilitation)\b/i,
+    advice:
+      'The posting requires a security clearance. If you hold one, say so and give its level; if you do not, this is usually a hard filter and the application may not be worth the time.',
+  },
+]
+
+function requirementsComponent(
+  jobDescription: string,
+  resumeText: string,
+  profile: Profile,
+): { component: AtsComponent; suggestions: AtsSuggestion[] } | null {
+  const demanded = HARD_REQUIREMENTS.filter((entry) => entry.demand.test(jobDescription))
+  if (!demanded.length) return null
+
+  // The profile counts as evidence alongside the document, because a language
+  // listed under Profile → Languages is a fact about the candidate even when
+  // the uploaded PDF forgot to mention it. The suggestion still says to put it
+  // in the document, since that is what gets parsed.
+  const candidateText = [
+    resumeText,
+    profile.summary,
+    profile.headline,
+    profile.languages.join(' '),
+    profile.skills.join(' '),
+    ...profile.education.map((entry) => `${entry.school} ${entry.degree} ${entry.field}`),
+  ].join('\n')
+
+  const unmet = demanded.filter((entry) => !entry.evidence.test(candidateText))
+  const met = demanded.length - unmet.length
+
+  return {
+    component: {
+      id: 'requirements',
+      label: 'Stated requirements',
+      score: met / demanded.length,
+      weight: WEIGHTS.requirements,
+      detail:
+        unmet.length === 0
+          ? `Your resume evidences all ${demanded.length} of the posting's stated requirements.`
+          : `Nothing in your resume evidences ${unmet.map((entry) => entry.label).join(', ')}.`,
+    },
+    suggestions: unmet.map((entry) => ({
+      id: `requirement-${entry.id}`,
+      severity: 'critical' as const,
+      title: `Unevidenced requirement: ${entry.label}`,
+      detail: entry.advice,
+    })),
   }
 }
 
 export function scoreResumeAgainstJob(input: AtsInput): AtsScore {
   const keywords = extractJobKeywords(input.jobDescription)
-  const haystack = candidateHaystack(input)
+  const index = candidateIndex(input)
+
+  /*
+   * What the *document* says, separately from what the profile knows.
+   *
+   * The gap between the two is the most actionable thing on the page: a term
+   * in this gap needs nothing to become true, the resume just has to say
+   * something already true of you. Telling someone to "add Kubernetes" when
+   * they have listed Kubernetes as a skill is advice they can't act on.
+   */
+  const documentIndex = matchIndex(input.resumeText)
 
   const matched: string[] = []
   const missing: string[] = []
+  const easyWins: string[] = []
   let matchedWeight = 0
   let totalWeight = 0
 
   for (const keyword of keywords) {
     totalWeight += keyword.weight
-    if (containsTerm(haystack, keyword.term)) {
+    if (containsTerm(index, keyword.term)) {
       matched.push(keyword.term)
       matchedWeight += keyword.weight
+      if (!containsTerm(documentIndex, keyword.term)) easyWins.push(keyword.term)
     } else {
       missing.push(keyword.term)
     }
   }
 
   const components: AtsComponent[] = []
-  const notes: string[] = []
+  const suggestions: AtsSuggestion[] = []
 
   if (keywords.length) {
     components.push({
@@ -420,26 +816,53 @@ export function scoreResumeAgainstJob(input: AtsInput): AtsScore {
   const required = requiredYears(input.jobDescription)
   if (required !== null) components.push(experienceComponent(required, input.profile))
 
+  const requirements = requirementsComponent(input.jobDescription, input.resumeText, input.profile)
+  if (requirements) {
+    components.push(requirements.component)
+    suggestions.push(...requirements.suggestions)
+  }
+
   const parseability = parseabilityComponent(input.resumeText)
   components.push(parseability.component)
-  notes.push(...parseability.notes)
+  suggestions.push(...parseability.suggestions)
+
+  if (easyWins.length) {
+    suggestions.push({
+      id: 'easy-wins',
+      severity: 'important',
+      title: 'Your profile says it; your resume doesn’t',
+      detail: `${easyWins.slice(0, 8).join(', ')} — the posting wants these and your profile already claims them, but the resume text never says so. The tracker only reads the document. This is the cheapest gain on this page: nothing has to become true.`,
+    })
+  }
 
   if (missing.length) {
-    notes.push(
-      `Terms the posting uses that your resume never does: ${missing.slice(0, 8).join(', ')}. Work in the ones you can say honestly — a keyword you can't back up in an interview costs more than it gains.`,
-    )
+    suggestions.push({
+      id: 'missing-terms',
+      severity: 'important',
+      title: 'Terms the posting uses that you never do',
+      detail: `${missing.slice(0, 8).join(', ')}. Work in the ones you can say honestly — a keyword you can't back up in an interview costs more than it gains.`,
+    })
   }
 
   if (title && title.score < 0.5) {
-    notes.push(
-      `Neither your headline nor any of your titles reads like “${input.jobTitle.trim()}”. Mirroring the posting's own title wording is one of the cheapest ranking gains there is.`,
-    )
+    suggestions.push({
+      id: 'title-wording',
+      severity: 'important',
+      title: 'Your titles don’t read like the posting’s',
+      detail: `Neither your headline nor any of your titles reads like “${input.jobTitle.trim()}”. Mirroring the posting's own title wording is one of the cheapest ranking gains there is.`,
+    })
   }
 
+  const seniorityGap = seniorityMismatch(input.jobTitle, input.profile)
+  if (seniorityGap) suggestions.push(seniorityGap)
+
   if (required !== null && input.profile.yearsExperience < required) {
-    notes.push(
-      `The posting screens for ${required} years of experience and your profile says ${input.profile.yearsExperience}. Filters on this are usually a floor, not a preference.`,
-    )
+    suggestions.push({
+      id: 'years-short',
+      severity: 'critical',
+      title: `Short of the ${required} years the posting screens for`,
+      detail: `The posting screens for ${required} years of experience and your profile says ${input.profile.yearsExperience}. Filters on this are usually a floor, not a preference.`,
+    })
   }
 
   const weightSum = components.reduce((sum, component) => sum + component.weight, 0)
@@ -448,11 +871,69 @@ export function scoreResumeAgainstJob(input: AtsInput): AtsScore {
     0,
   )
 
+  const ranked = rankSuggestions(suggestions)
+
   return {
     score: weightSum ? Math.round((weighted / weightSum) * 100) : 0,
     components,
     matched,
     missing,
-    notes,
+    easyWins,
+    suggestions: ranked,
+    // Kept so callers that render a flat list keep working unchanged.
+    notes: ranked.map((suggestion) => suggestion.detail),
+  }
+}
+
+const SEVERITY_ORDER: Record<AtsSeverity, number> = { critical: 0, important: 1, polish: 2 }
+
+/**
+ * Worst first, and stable within a severity so the same input always produces
+ * the same list — a score that reshuffles itself between identical runs reads
+ * as broken whatever the numbers say.
+ */
+function rankSuggestions(suggestions: AtsSuggestion[]): AtsSuggestion[] {
+  return suggestions
+    .map((suggestion, order) => ({ suggestion, order }))
+    .sort(
+      (a, b) =>
+        SEVERITY_ORDER[a.suggestion.severity] - SEVERITY_ORDER[b.suggestion.severity] ||
+        a.order - b.order,
+    )
+    .map((entry) => entry.suggestion)
+}
+
+/**
+ * A seniority gap between the posting and the candidate's own titles.
+ *
+ * Invisible to keyword overlap — "Junior Developer" and "Senior Developer"
+ * share every meaningful word — and one of the things a human screener filters
+ * on first. Only reported when *both* sides state a level, because inferring
+ * seniority from silence is how you tell someone they're too junior for a job
+ * whose title simply didn't say.
+ */
+function seniorityMismatch(jobTitle: string, profile: Profile): AtsSuggestion | null {
+  const wanted = seniorityOf(jobTitle)
+  if (!wanted) return null
+
+  const held = seniorityOf(
+    [profile.currentTitle, profile.headline, ...profile.experience.map((e) => e.title)].join(' '),
+  )
+  if (!held || held.rank === wanted.rank) return null
+
+  if (held.rank < wanted.rank) {
+    return {
+      id: 'seniority-below',
+      severity: 'important',
+      title: `The posting says “${wanted.word}”, your titles say “${held.word}”`,
+      detail: `This posting is pitched at "${wanted.word}" and the most senior wording in your own titles is "${held.word}". Keyword matching is blind to this, but a screener is not. If your scope genuinely matches, say so in the summary — team size, budget, what you owned.`,
+    }
+  }
+
+  return {
+    id: 'seniority-above',
+    severity: 'polish',
+    title: `You read as “${held.word}” for a “${wanted.word}” role`,
+    detail: `Your titles read as "${held.word}" and the posting is pitched at "${wanted.word}". That is not a filter you fail, but it is the one that gets an application set aside as overqualified. Worth a line on why you want this particular role.`,
   }
 }

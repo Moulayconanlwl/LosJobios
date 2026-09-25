@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { deepQueryAll, isDisplayed, pick, pickAll } from '@/content/dom/query'
+import { deepQueryAll, isDisplayed, isVisible, pick, pickAll } from '@/content/dom/query'
 import { collectFields } from '@/content/fields'
 
 /**
@@ -121,5 +121,45 @@ describe('collectFields', () => {
     // only consults the main document would come back blank.
     const [field] = collectFields(document)
     expect(field?.label).toContain('Email')
+  })
+})
+
+describe('isVisible', () => {
+  /**
+   * `isVisible` guards every *click*, so getting it wrong in the strict
+   * direction means nothing on the page is ever clickable — the apply button
+   * is found, rejected as invisible, and the run reports "no apply button" on
+   * a posting that plainly has one.
+   */
+  function box(el: HTMLElement, width: number, height: number): void {
+    el.getBoundingClientRect = () =>
+      ({ x: 0, y: 0, top: 0, left: 0, right: width, bottom: height, width, height, toJSON: () => ({}) }) as DOMRect
+  }
+
+  it('treats an unresolved opacity as visible, not as transparent', () => {
+    // `Number('')` is 0, so reading opacity with `Number` classifies an
+    // engine that hasn't resolved it as fully transparent. "I don't know"
+    // must never mean "hidden".
+    document.body.innerHTML = '<button id="b">Apply now</button>'
+    const button = document.getElementById('b') as HTMLElement
+    box(button, 120, 32)
+
+    expect(isVisible(button)).toBe(true)
+  })
+
+  it('still rejects something explicitly transparent', () => {
+    document.body.innerHTML = '<button id="b" style="opacity:0">Apply now</button>'
+    const button = document.getElementById('b') as HTMLElement
+    box(button, 120, 32)
+
+    expect(isVisible(button)).toBe(false)
+  })
+
+  it('still rejects a zero-size target, which a click would miss', () => {
+    document.body.innerHTML = '<button id="b">Apply now</button>'
+    const button = document.getElementById('b') as HTMLElement
+    box(button, 0, 0)
+
+    expect(isVisible(button)).toBe(false)
   })
 })

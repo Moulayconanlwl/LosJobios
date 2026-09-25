@@ -1,5 +1,5 @@
 import { rememberUserAnswer } from '@/lib/answers'
-import { NoReceiverError, sendToTab, type Ack } from '@/lib/messaging'
+import { NoReceiverError, sendToTab, type Ack, type ApplyOutcome } from '@/lib/messaging'
 import type { Application, JobRef, RunState } from '@/lib/schema'
 import {
   addApplication,
@@ -12,8 +12,10 @@ import {
   setRunState,
 } from '@/lib/storage'
 import { defaultRunState, savedJobDefaults } from '@/lib/schema'
+import type { JobSource } from '@/lib/schema'
+import { detectJobBoard, isApplyContinuation } from './boards'
 import { clearContentFrame, resolveContentFrame } from './frames'
-import { ensureContentScript, getActiveTab, isLinkedInJobsPage } from './injector'
+import { ensureContentScript, getActiveTab } from './injector'
 
 /**
  * The run engine.
@@ -64,10 +66,12 @@ export async function startRun(): Promise<Ack> {
   const tab = await getActiveTab()
   if (!tab?.id) return { ok: false, error: 'No active tab.' }
 
-  if (!isLinkedInJobsPage(tab.url)) {
+  const board = detectJobBoard(tab.url)
+  if (!board) {
     return {
       ok: false,
-      error: 'Open a LinkedIn job search page first (linkedin.com/jobs/search).',
+      error:
+        'This page isn’t a supported job search. Open a LinkedIn search (linkedin.com/jobs/search) or an Indeed search (indeed.com/jobs?q=…), then start the run.',
     }
   }
 
@@ -91,6 +95,11 @@ export async function startRun(): Promise<Ack> {
     status: 'running',
     tabId: tab.id,
     frameId: frameId ?? null,
+    board: board.id,
+    // Only stored for boards that navigate away to apply — it is what the run
+    // steers back to between jobs, and there is nothing to steer back to on a
+    // board whose flow never leaves the page.
+    boardUrl: board.navigatesToApply ? (tab.url ?? '') : '',
     startedAt: Date.now(),
     countedOn: today(),
     dailyCount: fresh.dailyCount,
@@ -130,7 +139,7 @@ export async function startRun(): Promise<Ack> {
         company: job.company,
         location: job.location,
         url: job.url,
-        source: 'linkedin' as const,
+        source: board.id,
         savedAt: now,
       })),
     ).catch(() => {
@@ -139,7 +148,10 @@ export async function startRun(): Promise<Ack> {
   }
 
   if (settings.skipAlreadyApplied) {
-    const already = await appliedExternalIds('linkedin')
+    // Scoped to this board: the same job posted on two boards carries two
+    // different ids, and treating one as the other would silently skip a job
+    // that was never applied to.
+    const already = await appliedExternalIds(board.id)
     jobs = jobs.filter((job) => !already.has(job.externalId))
   }
 
@@ -166,8 +178,8 @@ export async function startRun(): Promise<Ack> {
 
   void logActivity({
     kind: 'run-started',
-    summary: `Queued ${jobs.length} job${jobs.length === 1 ? '' : 's'} from a LinkedIn search.`,
-    site: 'linkedin.com',
+    summary: `Queued ${jobs.length} job${jobs.length === 1 ? '' : 's'} from a ${board.label} search.`,
+    site: hostOf(tab.url),
   })
 
   void ensureLoop()
@@ -291,6 +303,19 @@ async function runLoop(): Promise<void> {
       return
     }
 
+    // The previous job may have left the tab on a confirmation page. Get back
+    // to the listing before trying to open anything from it.
+    if (state.boardUrl) {
+      const returned = await returnToBoard(state.tabId, state.boardUrl)
+      if (!returned) {
+        await patchRunState({
+          status: 'paused',
+          lastError: 'Could not get back to the search page. Reopen it and resume.',
+        })
+        return
+      }
+    }
+
     await patchRunState({
       currentJob: job,
       lastMessage: `Applying — ${job.title || 'job'} at ${job.company || 'company'}`,
@@ -316,27 +341,47 @@ async function processJob(
   job: JobRef,
   dryRun: boolean,
 ): Promise<boolean> {
-  let outcome
+  let outcome: ApplyOutcome
 
   try {
     outcome = await sendToTab(tabId, 'cs/apply-job', { job, dryRun }, { frameId: frameId ?? undefined })
   } catch (err) {
     if (err instanceof NoReceiverError) {
-      // Usually the user navigated away or closed the tab mid-run.
-      await patchRunState({
-        status: 'paused',
-        lastError: 'Lost the page. Reopen the job search and resume.',
-      })
-      return false
+      /*
+       * Losing the receiver mid-apply means one of two things, and they need
+       * opposite responses: the Apply button navigated the tab to a hosted
+       * form (carry on there) or the user navigated away (stop).
+       *
+       * Where the tab actually is answers it. This has to be checked here
+       * rather than trusted to the `handoff` reply, because on a fast
+       * navigation the page is torn down before the reply is delivered — the
+       * reply is the tidy path, not a guarantee.
+       */
+      const landed = await currentTabUrl(tabId)
+      if (isApplyContinuation(landed)) {
+        outcome = { result: 'handoff', questionsAnswered: 0, aiAnswersUsed: 0 }
+      } else {
+        await patchRunState({
+          status: 'paused',
+          lastError: 'Lost the page. Reopen the job search and resume.',
+        })
+        return false
+      }
+    } else {
+      await bumpCounter('failed', describeError(err))
+      await advanceCursor()
+      return true
     }
-    await bumpCounter('failed', describeError(err))
-    await advanceCursor()
-    return true
+  }
+
+  if (outcome.result === 'handoff') {
+    outcome = await continueOnNewPage(tabId, job, dryRun, outcome)
   }
 
   switch (outcome.result) {
     case 'applied': {
-      await recordApplication(job, dryRun, outcome.questionsAnswered, outcome.aiAnswersUsed)
+      const { board } = await getRunState()
+      await recordApplication(board, job, dryRun, outcome.questionsAnswered, outcome.aiAnswersUsed)
 
       const state = await getRunState()
       await patchRunState({
@@ -377,6 +422,167 @@ async function processJob(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Applications that continue on another page
+// ---------------------------------------------------------------------------
+
+/** How long to give a hosted apply form to load before calling it a failure. */
+const CONTINUATION_LOAD_MS = 20_000
+
+type SettledOutcome = Exclude<ApplyOutcome, { result: 'handoff' }>
+
+/**
+ * Carry an application onto the page the Apply button navigated to.
+ *
+ * Deliberately one hop and no retries. A second handoff would mean the hosted
+ * form navigated again, which is not a flow this understands, and looping on
+ * it against a live site is how you end up submitting something twice.
+ */
+async function continueOnNewPage(
+  tabId: number,
+  job: JobRef,
+  dryRun: boolean,
+  carried: { questionsAnswered: number; aiAnswersUsed: number },
+): Promise<SettledOutcome> {
+  await patchRunState({ lastMessage: 'Following the application to the employer form…' })
+
+  const landed = await waitForTabSettled(tabId, CONTINUATION_LOAD_MS)
+  if (!landed) {
+    return { result: 'failed', error: 'The application form never finished loading.' }
+  }
+
+  if (!isApplyContinuation(landed)) {
+    return {
+      result: 'failed',
+      error: `The apply button led to ${hostOf(landed)}, which isn’t a form this can drive. Finish that one yourself.`,
+    }
+  }
+
+  const ready = await ensureContentScript(tabId)
+  if (!ready) {
+    return { result: 'failed', error: 'Could not reach the application form.' }
+  }
+
+  // A fresh page load means a fresh frame layout, so any frame claimed for the
+  // listing page is stale. Let the claim re-run rather than addressing a frame
+  // that no longer exists.
+  await clearContentFrame(tabId)
+  const frameId = await resolveContentFrame(tabId, 4000)
+
+  try {
+    const outcome = await sendToTab(
+      tabId,
+      'cs/continue-apply',
+      {
+        job,
+        dryRun,
+        carried: {
+          questionsAnswered: carried.questionsAnswered,
+          aiAnswersUsed: carried.aiAnswersUsed,
+        },
+      },
+      { frameId: frameId ?? undefined },
+    )
+
+    // A second handoff is not a flow this understands — say so rather than
+    // recursing.
+    if (outcome.result === 'handoff') {
+      return {
+        result: 'failed',
+        error: 'The application moved on again to a page this can’t follow. Finish that one yourself.',
+      }
+    }
+    return outcome
+  } catch (err) {
+    if (err instanceof NoReceiverError) {
+      return { result: 'failed', error: 'Lost the application form mid-way through.' }
+    }
+    return { result: 'failed', error: describeError(err) }
+  }
+}
+
+/**
+ * Steer a tab back to the listing page.
+ *
+ * Navigating to the stored URL rather than going back through history: the
+ * confirmation page a hosted form lands on is often reached by redirect, so
+ * "back" can mean the form again, or the click that started it.
+ *
+ * A no-op when the tab is already on that page, which is the normal case —
+ * this only has work to do after an application that navigated away.
+ */
+async function returnToBoard(tabId: number, boardUrl: string): Promise<boolean> {
+  const current = await currentTabUrl(tabId)
+  if (!current) return false
+  if (sameDocument(current, boardUrl)) return true
+
+  try {
+    await chrome.tabs.update(tabId, { url: boardUrl })
+  } catch {
+    return false
+  }
+
+  const landed = await waitForTabSettled(tabId, CONTINUATION_LOAD_MS)
+  if (!landed || !sameDocument(landed, boardUrl)) return false
+
+  return ensureContentScript(tabId)
+}
+
+/** Same page ignoring the fragment, which never changes what was served. */
+function sameDocument(a: string, b: string): boolean {
+  try {
+    const left = new URL(a)
+    const right = new URL(b)
+    return left.origin === right.origin && left.pathname === right.pathname && left.search === right.search
+  } catch {
+    return a === b
+  }
+}
+
+/**
+ * Wait for a tab to stop loading, and report where it ended up.
+ *
+ * Polls rather than listening for `onUpdated`, because an MV3 worker can be
+ * torn down and restarted between the listener being attached and the event
+ * firing — a poll picks up wherever the tab actually is.
+ */
+async function waitForTabSettled(tabId: number, timeoutMs: number): Promise<string | null> {
+  const deadline = Date.now() + timeoutMs
+
+  for (;;) {
+    let tab: chrome.tabs.Tab
+    try {
+      tab = await chrome.tabs.get(tabId)
+    } catch {
+      return null // The tab is gone.
+    }
+
+    if (tab.status === 'complete' && tab.url) return tab.url
+    if (Date.now() >= deadline) return tab.url ?? null
+
+    await sleep(400)
+  }
+}
+
+async function currentTabUrl(tabId: number): Promise<string | null> {
+  try {
+    const tab = await chrome.tabs.get(tabId)
+    return tab.url ?? null
+  } catch {
+    return null
+  }
+}
+
+/** A URL reduced to its host, for log lines that shouldn't carry query strings. */
+function hostOf(url: string | null | undefined): string {
+  if (!url) return ''
+  try {
+    return new URL(url).hostname
+  } catch {
+    return ''
+  }
+}
+
 async function advanceCursor(): Promise<void> {
   const state = await getRunState()
   await patchRunState({ cursor: state.cursor + 1, currentJob: null })
@@ -392,6 +598,7 @@ async function bumpCounter(field: 'skipped' | 'failed', message: string): Promis
 }
 
 async function recordApplication(
+  source: JobSource,
   job: JobRef,
   dryRun: boolean,
   questionsAnswered: number,
@@ -405,7 +612,7 @@ async function recordApplication(
     company: job.company,
     location: job.location,
     url: job.url,
-    source: 'linkedin',
+    source,
     status: 'applied',
     appliedAt: now,
     updatedAt: now,
@@ -426,7 +633,7 @@ async function recordApplication(
       : `Application submitted. ${questionsAnswered} field(s) filled, ${aiAnswersUsed} AI-drafted.`,
     jobTitle: job.title,
     company: job.company,
-    site: 'linkedin.com',
+    site: hostOf(job.url),
   })
 }
 

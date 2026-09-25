@@ -165,6 +165,18 @@ export const APPLICATION_STATUSES = [
 
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number]
 
+/**
+ * Where a job came from.
+ *
+ * Purely additive as boards are added: an existing record that says
+ * `'linkedin'` still parses, and a record written before this field existed
+ * still defaults to it. Nothing re-tags old data, so a run's own history keeps
+ * saying what it actually was.
+ */
+export const JOB_SOURCES = z.enum(['linkedin', 'indeed', 'universal', 'manual'])
+
+export type JobSource = z.infer<typeof JOB_SOURCES>
+
 export const applicationSchema = z.object({
   id: z.string(),
   /** Stable per-site job id when we can find one; used for dedupe. */
@@ -173,7 +185,7 @@ export const applicationSchema = z.object({
   company: z.string().default(''),
   location: z.string().default(''),
   url: z.string().default(''),
-  source: z.enum(['linkedin', 'universal', 'manual']).default('linkedin'),
+  source: JOB_SOURCES.default('linkedin'),
   status: z.enum(APPLICATION_STATUSES).default('applied'),
   appliedAt: z.number(),
   updatedAt: z.number(),
@@ -232,7 +244,7 @@ export const savedJobSchema = z.object({
   company: z.string().default(''),
   location: z.string().default(''),
   url: z.string().default(''),
-  source: z.enum(['linkedin', 'universal', 'manual']).default('linkedin'),
+  source: JOB_SOURCES.default('linkedin'),
   /** Empty until the posting itself is opened — a card doesn't carry it. */
   description: z.string().default(''),
   savedAt: z.number(),
@@ -332,6 +344,18 @@ export const runStateSchema = z.object({
   tabId: z.number().nullable().default(null),
   /** Which frame within tabId actually has the page's content — see background/frames.ts. */
   frameId: z.number().nullable().default(null),
+  /** Which job board this run is working through. */
+  board: JOB_SOURCES.default('linkedin'),
+  /**
+   * The search page the run started from.
+   *
+   * Some boards — Indeed among them — navigate the tab away to a separate
+   * apply form and land on a confirmation page afterwards. Going *back* by
+   * history from there is unreliable (the confirmation page is often a
+   * redirect target), so the run returns to this URL explicitly between jobs.
+   * Empty for boards that never leave the page.
+   */
+  boardUrl: z.string().default(''),
   startedAt: z.number().default(0),
   queue: z.array(jobRefSchema).default([]),
   cursor: z.number().default(0),
