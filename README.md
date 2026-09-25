@@ -107,7 +107,11 @@ It only ever writes *wording*. Companies, titles and dates are reattached from y
 
 What it can't claim, it tells you instead: every rewrite comes with a short list of what changed and what the posting wants that your history doesn't support. That list is the point.
 
-Both the CV and the cover letter download as **`.tex`** as well as plain text. The templates are yours to replace — paste your own document under **Settings → Backup & LaTeX** and mark the slots with `{{NAME}}`, `{{SUMMARY}}`, `{{EXPERIENCE}}` and so on. Everything substituted in is LaTeX-escaped in a single pass, so a company called "Smith & Co", a bullet about "99.9% uptime" or a skill called "C#" can't break the build.
+Both the CV and the cover letter download as **`.tex`** as well as plain text, and the two are built to look like one set: a centred name, a `fontawesome` contact row, dark blue section rules, and a four-argument `\entry` command putting dates on the right of each heading.
+
+The cover letter is a proper letter — your details as the sender block, the company and a dated place line opposite it, an `Objet :` line naming the role, then the body. The salutation and closing are chosen from the language the letter came out in, so a French posting doesn't get a letter opening "Dear Hiring Team".
+
+Templates are yours to replace: paste your own document under **Settings → Backup & LaTeX** and mark the slots — `{{NAME}}`, `{{HEADLINE}}`, `{{CONTACT}}`, `{{SUMMARY}}`, `{{SKILLS}}`, `{{EXPERIENCE}}`, `{{EDUCATION}}`, `{{LANGUAGES}}` for the CV; `{{SENDER}}`, `{{COMPANY}}`, `{{SUBJECT}}`, `{{GREETING}}`, `{{BODY}}`, `{{CLOSING}}`, `{{DATE}}` for the letter. Everything substituted in is LaTeX-escaped in a single pass, so a company called "Smith & Co", a bullet about "99.9% uptime" or a skill called "C#" can't break the build.
 
 ## Will this CV get through?
 

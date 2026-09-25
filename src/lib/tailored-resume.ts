@@ -18,13 +18,23 @@ export type ResumeRole = {
   bullets: string[]
 }
 
+/** Kept in parts rather than one string, so a template can lay it out itself. */
+export type ResumeEducation = {
+  degree: string
+  school: string
+  dates: string
+  location: string
+}
+
 export type RenderedResume = {
   name: string
+  headline: string
   contact: string[]
   summary: string
   skills: string[]
+  languages: string[]
   roles: ResumeRole[]
-  education: string[]
+  education: ResumeEducation[]
   notes: string[]
 }
 
@@ -51,19 +61,25 @@ export function renderResume(profile: Profile, tailored: TailoredResume): Render
     }
   })
 
-  const education = profile.education.map((entry) => {
-    const degree = [entry.degree, entry.field].filter(Boolean).join(' in ')
-    const when = entry.endYear ? ` (${entry.endYear})` : ''
-    return `${degree || 'Studied'} — ${entry.school || 'Institution'}${when}`
+  const education = profile.education.map((entry): ResumeEducation => {
+    const degree = [entry.degree, entry.field].filter(Boolean).join(' — ')
+    return {
+      degree: degree || 'Formation',
+      school: entry.school,
+      dates: [entry.startYear, entry.endYear].filter(Boolean).join(' – '),
+      location: '',
+    }
   })
 
   return {
     name: `${profile.firstName} ${profile.lastName}`.trim(),
+    headline: profile.headline,
     contact: [profile.email, profile.phone, profile.city, profile.linkedinUrl, profile.githubUrl]
       .map((part) => part.trim())
       .filter(Boolean),
     summary: tailored.summary,
     skills: tailored.skills.length ? tailored.skills : profile.skills,
+    languages: profile.languages,
     roles,
     education,
     notes: tailored.notes,
@@ -96,7 +112,10 @@ export function resumeToText(resume: RenderedResume): string {
 
   if (resume.education.length) {
     lines.push('', 'EDUCATION')
-    for (const entry of resume.education) lines.push(`- ${entry}`)
+    for (const entry of resume.education) {
+      const where = [entry.school, entry.dates].filter(Boolean).join(', ')
+      lines.push(`- ${entry.degree}${where ? ` — ${where}` : ''}`)
+    }
   }
 
   return lines.join('\n').trim()

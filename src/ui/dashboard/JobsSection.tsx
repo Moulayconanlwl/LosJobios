@@ -537,8 +537,8 @@ function ResumePanel({
               variant="secondary"
               onClick={() =>
                 downloadTex(
-                  `resume-${slug(job.company)}.tex`,
-                  resumeToLatex(rendered!, settings?.latex.resume || undefined),
+                  `cv-${slug(job.company)}.tex`,
+                  resumeToLatex(rendered!, profile, settings?.latex.resume || undefined),
                 )
               }
             >
@@ -625,8 +625,12 @@ function ResumePanel({
                 Education
               </h4>
               <ul className="flex list-disc flex-col gap-0.5 pl-4 text-xs">
-                {rendered.education.map((entry) => (
-                  <li key={entry}>{entry}</li>
+                {rendered.education.map((entry, index) => (
+                  <li key={`${entry.school}-${index}`}>
+                    {entry.degree}
+                    {entry.school ? ` — ${entry.school}` : ''}
+                    {entry.dates ? ` (${entry.dates})` : ''}
+                  </li>
                 ))}
               </ul>
             </section>

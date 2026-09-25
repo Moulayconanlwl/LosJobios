@@ -99,9 +99,15 @@ describe('renderResume', () => {
     expect(rendered.skills).toEqual(['Python', 'Kubernetes', 'PostgreSQL'])
   })
 
-  it('formats education from the profile', () => {
+  it('keeps education in parts, so a template can lay it out itself', () => {
     const rendered = renderResume(profileWith(), TAILORED)
-    expect(rendered.education[0]).toBe('BSc in Computer Science — MIT (2016)')
+
+    expect(rendered.education[0]).toEqual({
+      degree: 'BSc — Computer Science',
+      school: 'MIT',
+      dates: '2012 – 2016',
+      location: '',
+    })
   })
 
   it('keeps the notes, which are the part that says what it could not claim', () => {

@@ -235,10 +235,12 @@ Rules, in priority order:
 3. Ground the middle in two or three concrete points from the candidate's actual experience that match what the job is asking for. If a job description is given, speak to it directly; if not, write from the profile alone without inventing a company name or role details.
 4. Close with a short, direct line inviting next steps. No clichés like "I look forward to hearing from you soon."
 5. If a style reference is given, match its tone and structure, but write entirely fresh content for this role — never copy its sentences verbatim.
-6. Plain prose only: no markdown, no bullet points, no subject line, no placeholders like "[Company Name]" — write around anything you don't know rather than leaving a blank.
-7. 250–400 words, first person, professional but not stiff. Sign off with the candidate's first name only.
+6. Write the BODY ONLY. No salutation, no "Dear...", no "Madame, Monsieur", no closing formula, no signature, no subject line, no date, no addresses — the document these paragraphs are placed into supplies all of that, and writing them here produces them twice.
+7. Plain prose only: no markdown, no bullet points, no placeholders like "[Company Name]" — write around anything you don't know rather than leaving a blank. Separate paragraphs with a blank line.
+8. 250–400 words, first person, professional but not stiff.
+9. Write in the language the job description is written in. A French posting gets a French letter.
 
-Reply with the letter text only — no commentary, no JSON.`
+Reply with the letter's paragraphs only — no commentary, no JSON.`
 
 const REVIEW_SYSTEM_PROMPT = `You review one candidate's resume against one job posting, for the candidate's own benefit, and say what to change.
 

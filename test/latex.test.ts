@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_RESUME_TEMPLATE,
   coverLetterToLatex,
+  detectLetterLanguage,
   escapeLatex,
+  escapeLatexUrl,
   escapeParagraphs,
   fillTemplate,
   resumeToLatex,
@@ -87,6 +89,9 @@ function profileWith(): Profile {
     firstName: 'Ada',
     lastName: 'Lovelace',
     email: 'ada@example.com',
+    phoneCountryCode: '+44',
+    phone: '7700 900123',
+    city: 'London',
     skills: ['C#', 'Python'],
     experience: [
       {
@@ -113,34 +118,44 @@ const TAILORED: TailoredResume = {
 }
 
 describe('resumeToLatex', () => {
-  it('escapes everything substituted in, including the awkward bits', () => {
-    const tex = resumeToLatex(renderResume(profileWith(), TAILORED))
+  const tex = () => resumeToLatex(renderResume(profileWith(), TAILORED), profileWith())
 
-    expect(tex).toContain('Smith \\& Co')
-    expect(tex).toContain('99.9\\% uptime')
-    expect(tex).toContain('C\\#')
-    // Nothing raw survived.
-    expect(tex).not.toMatch(/[^\\]&/)
+  it('escapes everything substituted in, including the awkward bits', () => {
+    const result = tex()
+
+    expect(result).toContain('Smith \\& Co')
+    expect(result).toContain('99.9\\% uptime')
+    expect(result).toContain('C\\#')
   })
 
   it('keeps the template structure intact', () => {
-    const tex = resumeToLatex(renderResume(profileWith(), TAILORED))
+    const result = tex()
 
-    expect(tex).toContain('\\documentclass')
-    expect(tex).toContain('\\begin{document}')
-    expect(tex).toContain('\\end{document}')
-    expect(tex).not.toContain('{{')
+    expect(result).toContain('\\documentclass')
+    expect(result).toContain('\\begin{document}')
+    expect(result).toContain('\\end{document}')
+    expect(result).not.toContain('{{')
+  })
+
+  it('uses the four-argument entry command for each role', () => {
+    // The template defines \entry{title}{dates}{company}{location}.
+    expect(tex()).toContain('\\entry{Engineer}{2019 – Present}{Smith \\& Co}{London}')
   })
 
   it('renders bullets as an itemize block', () => {
-    const tex = resumeToLatex(renderResume(profileWith(), TAILORED))
-    expect(tex).toContain('\\begin{itemize}')
-    expect(tex).toContain('\\item Cut costs by 30\\%')
+    expect(tex()).toContain('\\begin{itemize}[leftmargin=14pt')
+    expect(tex()).toContain('\\item Cut costs by 30\\%')
+  })
+
+  it('builds the icon contact row from the profile', () => {
+    const result = tex()
+    expect(result).toContain('\\faEnvelope')
+    expect(result).toContain('\\href{mailto:ada@example.com}')
   })
 
   it('uses a supplied template instead of the default', () => {
-    const tex = resumeToLatex(renderResume(profileWith(), TAILORED), 'ONLY {{NAME}}')
-    expect(tex).toBe('ONLY Ada Lovelace')
+    const result = resumeToLatex(renderResume(profileWith(), TAILORED), profileWith(), 'ONLY {{NAME}}')
+    expect(result).toBe('ONLY Ada Lovelace')
   })
 
   it('produces a document even from an empty profile', () => {
@@ -151,15 +166,19 @@ describe('resumeToLatex', () => {
       notes: [],
       generatedAt: 0,
     })
-    const tex = resumeToLatex(empty)
+    const result = resumeToLatex(empty, defaultProfile())
 
-    expect(tex).toContain('\\begin{document}')
-    expect(tex).not.toContain('{{')
+    expect(result).toContain('\\begin{document}')
+    expect(result).not.toContain('{{')
     expect(DEFAULT_RESUME_TEMPLATE).toContain('{{NAME}}')
   })
 })
 
 describe('coverLetterToLatex', () => {
+  const english = 'I would love to join your team and I have the experience that role needs.'
+  const french =
+    'Je vous écris pour le poste que vous proposez. Mon expérience dans des équipes techniques correspond à vos besoins.'
+
   it('escapes the company and the body', () => {
     const tex = coverLetterToLatex(
       profileWith(),
@@ -172,9 +191,74 @@ describe('coverLetterToLatex', () => {
     expect(tex).not.toContain('{{')
   })
 
+  it('carries the sender block, which is the whole point of a letterhead', () => {
+    const tex = coverLetterToLatex(profileWith(), { title: 'Engineer', company: 'Acme' }, english)
+
+    expect(tex).toContain('Ada Lovelace')
+    expect(tex).toContain('ada@example.com')
+    expect(tex).toContain('\\faPhone')
+  })
+
+  it('writes a subject line from the role', () => {
+    const tex = coverLetterToLatex(
+      profileWith(),
+      { title: 'Chef de projet', company: 'Acme' },
+      french,
+    )
+    expect(tex).toContain('Candidature au poste de Chef de projet')
+  })
+
+  it('matches the salutation to the language the letter came out in', () => {
+    const fr = coverLetterToLatex(profileWith(), { title: 'Chef de projet', company: 'Acme' }, french)
+    const en = coverLetterToLatex(profileWith(), { title: 'Engineer', company: 'Acme' }, english)
+
+    // A French letter opening "Dear Hiring Team" is exactly the seam that
+    // makes a document look generated.
+    expect(fr).toContain('Madame, Monsieur,')
+    expect(fr).toContain('salutations distinguées')
+    expect(en).toContain('Dear Hiring Team,')
+    expect(en).not.toContain('Madame, Monsieur,')
+  })
+
+  it('dates the letter from the sender city', () => {
+    const tex = coverLetterToLatex(profileWith(), { title: 'Chef de projet', company: 'Acme' }, french)
+    expect(tex).toMatch(/London, le \d/)
+  })
+
   it('falls back to a generic addressee when the company is unknown', () => {
-    const tex = coverLetterToLatex(profileWith(), { title: '', company: '' }, 'Hello.')
+    const tex = coverLetterToLatex(profileWith(), { title: '', company: '' }, english)
     expect(tex).toContain('Hiring Team')
+  })
+})
+
+describe('detectLetterLanguage', () => {
+  it('spots a French letter', () => {
+    expect(
+      detectLetterLanguage(
+        'Je vous adresse ma candidature pour le poste de chef de projet dans votre équipe.',
+      ),
+    ).toBe('fr')
+  })
+
+  it('spots an English letter', () => {
+    expect(
+      detectLetterLanguage('I am writing about the role on your team and what I would bring to it.'),
+    ).toBe('en')
+  })
+
+  it('defaults to French for an empty body, matching the template', () => {
+    expect(detectLetterLanguage('')).toBe('fr')
+  })
+})
+
+describe('escapeLatexUrl', () => {
+  it('escapes only what TeX would eat before hyperref sees it', () => {
+    expect(escapeLatexUrl('https://x.com/a%20b')).toBe('https://x.com/a\\%20b')
+    expect(escapeLatexUrl('https://x.com/a#b')).toBe('https://x.com/a\\#b')
+  })
+
+  it('leaves an underscore alone, which would otherwise corrupt the link', () => {
+    expect(escapeLatexUrl('https://x.com/my_profile')).toBe('https://x.com/my_profile')
   })
 })
 
