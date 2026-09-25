@@ -34,6 +34,86 @@ import {
 
 const DASHBOARD_PAGE = 'src/ui/dashboard/index.html'
 
+/** Let a freshly created tab finish loading before anything is asked of it. */
+async function waitForTabLoad(tabId: number, timeoutMs = 20_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null)
+    if (!tab || tab.status === 'complete') return
+    await new Promise((resolve) => setTimeout(resolve, 300))
+  }
+}
+
+/**
+ * Read a posting's description out of every frame of a tab, without going
+ * through the content script at all.
+ *
+ * This exists because the messaging path has several independent ways to
+ * come back empty — the script not injected yet, the wrong frame addressed,
+ * the page not rendered — and a user pressing "Fetch description" doesn't
+ * care which one it was. `scripting` + `allFrames` sidesteps the lot: it
+ * runs in every frame and the longest answer wins. It polls because the
+ * posting body renders after the document is otherwise complete.
+ */
+async function scrapeDescription(tabId: number, timeoutMs = 12_000): Promise<string> {
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    let results: chrome.scripting.InjectionResult<string>[] = []
+
+    try {
+      results = await chrome.scripting.executeScript({
+        target: { tabId, allFrames: true },
+        // Self-contained on purpose: this is serialized into every frame, so
+        // it can close over nothing from up here.
+        func: () => {
+          const selectors = [
+            '#job-details',
+            '.jobs-description__content',
+            '.jobs-description-content__text',
+            '.jobs-box__html-content',
+            '.show-more-less-html__markup',
+            '.description__text',
+            '[class*="jobs-description"]',
+            '[class*="description__text"]',
+            'article',
+            'main',
+          ]
+
+          let best = ''
+          for (const selector of selectors) {
+            for (const el of Array.from(document.querySelectorAll(selector))) {
+              const node = el as HTMLElement
+              // textContent as the fallback: innerText depends on layout and
+              // is empty in a tab that was never painted.
+              const text = (node.innerText || node.textContent || '')
+                .replace(/\s+/g, ' ')
+                .trim()
+              if (text.length > best.length) best = text
+            }
+            // A specific selector that matched well enough is better than a
+            // longer but vaguer match from `main`, so stop early.
+            if (best.length > 400) return best.slice(0, 8000)
+          }
+          return best.slice(0, 8000)
+        },
+      })
+    } catch {
+      return '' // no host permission for this site, or the tab went away
+    }
+
+    const best = results
+      .map((entry) => (typeof entry.result === 'string' ? entry.result : ''))
+      .sort((a, b) => b.length - a.length)[0]
+
+    if (best && best.length > 200) return best
+    await new Promise((resolve) => setTimeout(resolve, 600))
+  }
+
+  return ''
+}
+
 registerHandlers({
   'run/start': () => startRun(),
   'run/pause': () => pauseRun(),
@@ -195,25 +275,50 @@ registerHandlers({
     try {
       const tab = await chrome.tabs.create({ url: job.url, active: false })
       tabId = tab.id
-
       if (tabId === undefined) return { ok: false as const, error: 'Could not open the posting.' }
-      if (!(await ensureContentScript(tabId))) {
-        return { ok: false as const, error: 'Could not read that page.' }
+
+      // `tabs.create` resolves while the tab is still loading. Injecting into
+      // a document that's about to be replaced by the navigation was one of
+      // the reasons this came back empty.
+      await waitForTabLoad(tabId)
+
+      let description = ''
+      let title = ''
+      let company = ''
+
+      // Preferred path: the content script, which knows this site's layouts
+      // and waits for the posting to render. The frame claim is waited for
+      // because the tab is seconds old — on a signed-in LinkedIn the real
+      // document is an iframe, and frame 0 is an empty shell.
+      if (await ensureContentScript(tabId)) {
+        try {
+          const frameId = await resolveContentFrame(tabId, 6000)
+          const context = await sendToTab(tabId, 'cs/job-context', {}, { frameId })
+          description = context.description.trim()
+          title = context.title
+          company = context.company
+        } catch {
+          // Fall through to reading the page directly.
+        }
       }
 
-      const frameId = await resolveContentFrame(tabId)
-      const context = await sendToTab(tabId, 'cs/job-context', {}, { frameId })
-      const description = context.description.trim()
+      // Fallback: read every frame ourselves. Independent of the content
+      // script, the frame claim and the messaging layer, so it still works
+      // when any one of those is the thing that's broken.
+      if (!description) description = await scrapeDescription(tabId)
 
       if (!description) {
-        return { ok: false as const, error: 'No description found on that posting.' }
+        return {
+          ok: false as const,
+          error: 'Could not read a description from that posting. Open it yourself and use “Score this job against my CV” in the popup instead.',
+        }
       }
 
       await putSavedJob({
         ...job,
         description,
-        title: job.title || context.title,
-        company: job.company || context.company,
+        title: job.title || title,
+        company: job.company || company,
       })
 
       return { ok: true as const, description }

@@ -176,12 +176,31 @@ registerHandlers({
     return report
   },
 
-  'cs/job-context': () => {
+  /**
+   * What job is this page about?
+   *
+   * The description is waited for rather than read once. A posting opened
+   * fresh — which is exactly how the dashboard fetches one — renders its
+   * body well after the content script loads, so reading immediately
+   * reliably returned nothing at all.
+   */
+  'cs/job-context': async () => {
+    const description = await waitFor(
+      () => {
+        const text = adapter.jobDescription()
+        // A handful of characters is a heading or a spinner, not a posting.
+        return text.length > 200 ? text : null
+      },
+      { timeoutMs: 12_000, intervalMs: 300 },
+    )
+
     const job = adapter.describeJob()
+
     return {
       title: job.title,
       company: job.company,
-      description: adapter.jobDescription(),
+      // Fall back to whatever short text there is rather than nothing.
+      description: description ?? adapter.jobDescription(),
       url: location.href,
     }
   },

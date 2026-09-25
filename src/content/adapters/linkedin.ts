@@ -5,6 +5,7 @@ import { fillFields } from '../filler'
 import { humanClick, pause, sleep } from '../dom/human'
 import {
   findByText,
+  isDisplayed,
   isVisible,
   normalizeText,
   pick,
@@ -91,11 +92,23 @@ const MODAL_SELECTORS = [
   'div[role="dialog"]',
 ]
 
+/**
+ * Where a posting's text lives, across the layouts LinkedIn serves.
+ *
+ * The first four are the authenticated job view and the details pane beside
+ * a search. The next are the signed-out guest posting, which is what a
+ * freshly opened tab can land on. The wildcards are the safety net for the
+ * next time the build-hashed class names move.
+ */
 const DESCRIPTION_SELECTORS = [
-  '.jobs-description__content',
-  '.jobs-box__html-content',
   '#job-details',
+  '.jobs-description__content',
   '.jobs-description-content__text',
+  '.jobs-box__html-content',
+  '.show-more-less-html__markup',
+  '.description__text',
+  '[class*="jobs-description"]',
+  '[class*="description__text"]',
 ]
 
 type StepAction =
@@ -381,9 +394,28 @@ export class LinkedInAdapter implements SiteAdapter {
     return findByText(TEXT.easyApply) ?? findByText(TEXT.apply)
   }
 
+  /**
+   * The posting's text, from whichever candidate holds the most of it.
+   *
+   * Two deliberate choices, both of which were bugs before. `isDisplayed`
+   * rather than `isVisible`, because this reads text instead of clicking it
+   * and a background tab that was never painted reports zero-size boxes for
+   * real elements — the whole point of opening a posting in the background
+   * is to read it without stealing focus. And `textContent` as a fallback
+   * for `innerText`, which is layout-dependent and comes back empty in a tab
+   * that has never been rendered.
+   */
   jobDescription(): string {
-    const el = pick(DESCRIPTION_SELECTORS)
-    return el ? normalizeText(text(el)).slice(0, 8000) : ''
+    let best = ''
+
+    for (const el of pickAll(DESCRIPTION_SELECTORS, document, isDisplayed)) {
+      const value = normalizeText(el.innerText || el.textContent)
+      // Longest wins: a container and the node inside it both match, and
+      // which one is the outer varies by layout.
+      if (value.length > best.length) best = value
+    }
+
+    return best.slice(0, 8000)
   }
 
   /**
