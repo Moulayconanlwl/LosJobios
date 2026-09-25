@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { GeminiProvider, hasGeminiPermission } from '@/lib/ai/gemini'
 import { scoreResumeAgainstJob, type AtsScore } from '@/lib/ats'
+import { coverLetterToLatex, resumeToLatex, slug } from '@/lib/latex'
 import { sendToBackground } from '@/lib/messaging'
 import { renderResume, resumeToText } from '@/lib/tailored-resume'
 import type { Profile, SavedJob, Settings } from '@/lib/schema'
@@ -39,6 +40,16 @@ async function buildProvider(settings: Settings | null): Promise<GeminiProvider>
 
 function download(name: string, body: string) {
   const url = URL.createObjectURL(new Blob([body], { type: 'text/plain;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+/** A `.tex` of whichever document, using the user's template when they have one. */
+function downloadTex(name: string, body: string) {
+  const url = URL.createObjectURL(new Blob([body], { type: 'application/x-tex;charset=utf-8' }))
   const link = document.createElement('a')
   link.href = url
   link.download = name
@@ -380,11 +391,25 @@ function JobDetail({
           <Material
             body={job.coverLetter}
             emptyHint="Written fresh for this posting, from your profile and its description."
-            fileName={`cover-letter-${(job.company || 'role').toLowerCase().replace(/\W+/g, '-')}.txt`}
+            fileName={`cover-letter-${slug(job.company)}.txt`}
             actionLabel={job.coverLetter ? 'Write it again' : 'Write cover letter'}
             busy={busy === 'letter'}
             disabled={busy !== '' || !job.description}
             onGenerate={() => void writeLetter()}
+            onTex={
+              profile && job.coverLetter
+                ? () =>
+                    downloadTex(
+                      `cover-letter-${slug(job.company)}.tex`,
+                      coverLetterToLatex(
+                        profile,
+                        job,
+                        job.coverLetter,
+                        settings?.latex.coverLetter || undefined,
+                      ),
+                    )
+                : undefined
+            }
           />
         ) : null}
 
@@ -392,6 +417,7 @@ function JobDetail({
           <ResumePanel
             job={job}
             profile={profile}
+            settings={settings}
             busy={busy === 'resume'}
             disabled={busy !== '' || !job.description}
             onGenerate={() => void writeResume()}
@@ -422,6 +448,7 @@ function Material({
   busy,
   disabled,
   onGenerate,
+  onTex,
 }: {
   body: string
   emptyHint: string
@@ -430,6 +457,7 @@ function Material({
   busy: boolean
   disabled: boolean
   onGenerate: () => void
+  onTex?: () => void
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -443,8 +471,14 @@ function Material({
             <CopyButton text={body} />
             <Button size="sm" variant="secondary" onClick={() => download(fileName, body)}>
               <DownloadIcon className="h-3.5 w-3.5" />
-              Download
+              .txt
             </Button>
+            {onTex ? (
+              <Button size="sm" variant="secondary" onClick={onTex}>
+                <DownloadIcon className="h-3.5 w-3.5" />
+                .tex
+              </Button>
+            ) : null}
           </>
         ) : null}
       </div>
@@ -463,12 +497,14 @@ function Material({
 function ResumePanel({
   job,
   profile,
+  settings,
   busy,
   disabled,
   onGenerate,
 }: {
   job: SavedJob
   profile: Profile | null
+  settings: Settings | null
   busy: boolean
   disabled: boolean
   onGenerate: () => void
@@ -491,15 +527,23 @@ function ResumePanel({
             <Button
               size="sm"
               variant="secondary"
+              onClick={() => download(`resume-${slug(job.company)}.txt`, asText)}
+            >
+              <DownloadIcon className="h-3.5 w-3.5" />
+              .txt
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
               onClick={() =>
-                download(
-                  `resume-${(job.company || 'role').toLowerCase().replace(/\W+/g, '-')}.txt`,
-                  asText,
+                downloadTex(
+                  `resume-${slug(job.company)}.tex`,
+                  resumeToLatex(rendered!, settings?.latex.resume || undefined),
                 )
               }
             >
               <DownloadIcon className="h-3.5 w-3.5" />
-              Download
+              .tex
             </Button>
           </>
         ) : null}

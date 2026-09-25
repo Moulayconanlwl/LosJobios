@@ -155,6 +155,13 @@ export async function clearApplications(): Promise<void> {
   await local().set({ [LOCAL_KEYS.applications]: [] })
 }
 
+/** Write the whole list at once — used by a restore, not by a run. */
+export async function replaceApplications(applications: Application[]): Promise<void> {
+  await local().set({
+    [LOCAL_KEYS.applications]: applicationsSchema.parse(applications).slice(0, MAX_APPLICATIONS),
+  })
+}
+
 /** True when this job was already applied to for real (dry runs don't count). */
 export async function hasAppliedTo(source: string, externalId: string): Promise<boolean> {
   if (!externalId) return false
@@ -251,6 +258,12 @@ export async function clearSavedJobs(): Promise<void> {
   await local().set({ [LOCAL_KEYS.savedJobs]: [] })
 }
 
+export async function replaceSavedJobs(jobs: SavedJob[]): Promise<void> {
+  await local().set({
+    [LOCAL_KEYS.savedJobs]: savedJobsSchema.parse(jobs).slice(0, MAX_SAVED_JOBS),
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Answer bank
 // ---------------------------------------------------------------------------
@@ -277,6 +290,10 @@ export async function putAnswer(entry: AnswerEntry): Promise<void> {
 export async function deleteAnswer(id: string): Promise<void> {
   const all = await getAnswers()
   await local().set({ [LOCAL_KEYS.answers]: all.filter((a) => a.id !== id) })
+}
+
+export async function replaceAnswers(answers: AnswerEntry[]): Promise<void> {
+  await local().set({ [LOCAL_KEYS.answers]: answersSchema.parse(answers) })
 }
 
 /** Bump usage stats after an answer is reused, without rewriting its content. */

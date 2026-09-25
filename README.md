@@ -75,6 +75,16 @@ The extension has **no network permission at all** until you grant it here.
 
 ---
 
+## Your data, and what survives
+
+Everything lives in this browser's extension storage. **Reloading or updating the extension keeps all of it** — jobs, applications, answers, profile.
+
+**Uninstalling does not.** Chrome erases an extension's entire storage when you remove it, and no database inside an extension can survive that; it isn't a design choice we made. So **Settings → Backup & LaTeX** exports the lot as one JSON file, and imports it back.
+
+Restore defaults to **merge**: it adds records this machine doesn't have and leaves your profile and settings alone, so importing an old file can't revert work you've done since. Untick that to replace everything instead. Applications and jobs are matched on the posting rather than on their per-machine id, so restoring the same file twice doesn't duplicate anything.
+
+Export before you uninstall, reinstall, or move machines.
+
 ## The jobs library
 
 Every posting a run sees is saved, so you can come back to it. **Scan this page for jobs** in the popup does the same thing without applying to anything — point it at a LinkedIn search and the whole list lands in the dashboard.
@@ -95,7 +105,9 @@ The optional template under **Profile → Cover letter** is a style reference, n
 
 It only ever writes *wording*. Companies, titles and dates are reattached from your profile after the model has had its say, so it has no way to put an employer you never worked for on the page — a role number it invents is dropped, and a "skill" that isn't already on your profile is ignored. A role it skipped keeps whatever you wrote yourself rather than disappearing.
 
-What it can't claim, it tells you instead: every rewrite comes with a short list of what changed and what the posting wants that your history doesn't support. That list is the point. Copy it as text, or download it.
+What it can't claim, it tells you instead: every rewrite comes with a short list of what changed and what the posting wants that your history doesn't support. That list is the point.
+
+Both the CV and the cover letter download as **`.tex`** as well as plain text. The templates are yours to replace — paste your own document under **Settings → Backup & LaTeX** and mark the slots with `{{NAME}}`, `{{SUMMARY}}`, `{{EXPERIENCE}}` and so on. Everything substituted in is LaTeX-escaped in a single pass, so a company called "Smith & Co", a bullet about "99.9% uptime" or a skill called "C#" can't break the build.
 
 ## Will this CV get through?
 
@@ -162,6 +174,10 @@ src/
 **Resume parsing only ever fills empty fields, never overwrites.** `mergeParsedResume` checks each profile field before writing to it — heuristic and AI results alike. This is what makes it safe to upload a CV, edit a few fields by hand, and click "Parse resume" again later without losing the edits. `pdfjs-dist` and `mammoth` are dynamically imported from `resumeExtract.ts`, which only the options page reaches — check a build's chunk sizes if you touch this, since pulling either library into the content script or background bundle by accident would bloat both by several hundred KB for no benefit.
 
 **pdf.js's `getTextContent()` has no notion of a line — joining fragments with a bare space collapses a whole page into one string.** That silently breaks every line-oriented heuristic (the candidate's name is the first line; a Skills section reads until the next blank line) while regex-based email/phone/link extraction keeps working, since it scans anywhere in the text — which is exactly why partial, seemingly-arbitrary extraction failures are the symptom, not a crash. `lib/pdf-text.ts`'s `reconstructLines` rebuilds real lines from each fragment's position (`transform`, `width`, `hasEOL`) before anything downstream sees the text. Never go back to a plain `.join(' ')` here.
+
+**The post-apply dialog guard is armed only during a submit, and identifies its target by wording.** LinkedIn's "your application was sent" modal blocks every click behind it, which stalls the rest of a run. An earlier attempt closed "any dialog that doesn't look like a form" before every job and broke real applications — so this one does nothing at all unless an application is mid-submit, never touches a dialog containing a form control, and leaves unrecognised dialogs alone. It hides rather than removes, because ripping a node out from under React can throw on its next render. And it only ever clicks an *exact* label match: that dialog pairs "Not now" with **"Update profile"**, which would rewrite the user's LinkedIn profile from their CV.
+
+**LaTeX escaping is one pass, and has to be.** Chained `.replace` calls re-scan what the previous ones wrote: escaping `\` emits `\textbackslash{}`, and a later pass over braces then escapes the braces that escaping just introduced. The result renders as literal text instead of a backslash. One regex, one lookup table, nothing re-read.
 
 **A generated resume never carries a generated fact.** The model is given the candidate's roles *numbered*, and returns bullets under those numbers — it never sees a slot for a company name or a date. `renderResume` reattaches those from the stored profile, `generateResume` drops any role number that isn't one of theirs, and skills are intersected with what the profile already claims. So the failure mode of a model inventing an employer is a dropped bullet, not a lie on a document an employer reads. Don't "simplify" this by letting the model return company names directly.
 

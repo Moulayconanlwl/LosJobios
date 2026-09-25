@@ -6,6 +6,7 @@ import { AppShell, SidebarLink } from '../components/AppShell'
 import {
   BriefcaseIcon,
   ChatIcon,
+  DocIcon,
   GaugeIcon,
   HistoryIcon,
   SlidersIcon,
@@ -16,6 +17,7 @@ import { cx } from '../components/ui'
 import { useDraft, useProfile, useSettings } from '../hooks'
 import { AiSection } from './sections/AiSection'
 import { AnswersSection } from './sections/AnswersSection'
+import { BackupSection } from './sections/BackupSection'
 import { AtsSection } from './sections/AtsSection'
 import { AutomationSection } from './sections/AutomationSection'
 import { HistorySection } from './sections/HistorySection'
@@ -28,6 +30,7 @@ const TABS = [
   { id: 'automation', label: 'Automation', icon: SlidersIcon },
   { id: 'ai', label: 'AI', icon: SparkIcon },
   { id: 'answers', label: 'Answer bank', icon: ChatIcon },
+  { id: 'backup', label: 'Backup & LaTeX', icon: DocIcon },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -84,6 +87,7 @@ export function Options() {
       {tab === 'automation' && <AutomationSection draft={settingsDraft} />}
       {tab === 'ai' && <AiSection draft={settingsDraft} />}
       {tab === 'answers' && <AnswersSection />}
+      {tab === 'backup' && <BackupSection draft={settingsDraft} />}
     </AppShell>
   )
 }

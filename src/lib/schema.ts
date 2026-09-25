@@ -111,6 +111,17 @@ export const aiSettingsSchema = z.object({
   answerQuestions: z.boolean().default(true),
 })
 
+/**
+ * Your own `.tex` documents, with `{{PLACEHOLDER}}` slots where the
+ * generated content goes. Empty means "use the built-in default", so an
+ * upgrade that improves the default isn't silently ignored for everyone who
+ * never edited theirs.
+ */
+export const latexSettingsSchema = z.object({
+  resume: z.string().default(''),
+  coverLetter: z.string().default(''),
+})
+
 export const settingsSchema = z.object({
   /** Drives the whole modal but never clicks the final Submit. On by default. */
   dryRun: z.boolean().default(true),
@@ -131,6 +142,7 @@ export const settingsSchema = z.object({
   blockedCompanies: z.array(z.string()).default([]),
 
   ai: aiSettingsSchema.default({}),
+  latex: latexSettingsSchema.default({}),
 })
 
 export type Settings = z.infer<typeof settingsSchema>

@@ -14,6 +14,12 @@ import {
   waitFor,
   waitForGone,
 } from '../dom/query'
+import {
+  armDialogGuard,
+  disarmDialogGuard,
+  isPostApplyDialog,
+  suppressDialog,
+} from '../dialog-guard'
 import type { ApplyContext, SiteAdapter } from './types'
 
 /**
@@ -542,15 +548,25 @@ export class LinkedInAdapter implements SiteAdapter {
         }
 
         ctx.report('Submitting application…')
-        await humanClick(action.button, ctx.signal)
 
-        const confirmed = await this.confirmSubmitted(ctx)
-        if (!confirmed) {
-          return { result: 'failed', error: 'Submitted but saw no confirmation.' }
+        // Armed *before* the click: the confirmation dialog can be up before
+        // the submit call even returns, and it blocks every click after it.
+        armDialogGuard()
+
+        try {
+          await humanClick(action.button, ctx.signal)
+
+          const confirmed = await this.confirmSubmitted(ctx)
+          if (!confirmed) {
+            return { result: 'failed', error: 'Submitted but saw no confirmation.' }
+          }
+
+          await this.dismissPostSubmitModal(ctx)
+          return { result: 'applied', questionsAnswered, aiAnswersUsed }
+        } finally {
+          // Narrow window on purpose — outside a submit this does nothing.
+          disarmDialogGuard()
         }
-
-        await this.dismissPostSubmitModal(ctx)
-        return { result: 'applied', questionsAnswered, aiAnswersUsed }
       }
 
       // Detect a step that didn't advance — usually an inline validation error
@@ -674,16 +690,25 @@ export class LinkedInAdapter implements SiteAdapter {
     return Boolean(confirmation)
   }
 
-  /** The post-submit "application sent" dialog, which has its own Done button. */
+  /**
+   * The post-submit "application sent" dialog.
+   *
+   * The guard armed around the submit usually has this already — it reacts
+   * to the dialog appearing rather than waiting to be asked. This stays as
+   * the belt-and-braces pass for a dialog that rendered late, and gives it
+   * one more beat to clear before the next job starts clicking.
+   */
   private async dismissPostSubmitModal(ctx: ApplyContext): Promise<void> {
-    const done = findByText(['done', 'not now', 'no thanks', 'close'], [
-      'button',
-      '[role="button"]',
-    ])
-    if (done) {
-      await humanClick(done, ctx.signal)
-      await sleep(500, ctx.signal)
-    }
+    const dialog = await waitFor(
+      () =>
+        Array.from(document.querySelectorAll<HTMLElement>('div[role="dialog"], .artdeco-modal'))
+          .filter((el) => el.style.display !== 'none')
+          .find(isPostApplyDialog) ?? null,
+      { timeoutMs: 4000, intervalMs: 250, signal: ctx.signal },
+    )
+
+    if (dialog) suppressDialog(dialog)
+    await sleep(600, ctx.signal)
   }
 
   /**
