@@ -28,7 +28,12 @@ export default defineManifest({
   optional_host_permissions: ['https://generativelanguage.googleapis.com/*'],
 
   action: {
-    default_popup: 'src/ui/popup/index.html',
+    // No `default_popup` on purpose. With none set, Chrome lets the extension
+    // open its side panel straight from the toolbar click
+    // (`openPanelOnActionClick` in the service worker), and the panel is the
+    // right surface for this: a popup closes the moment you click the page it
+    // is driving, which is exactly what you do while watching a run work or
+    // checking what it proposes to type.
     default_icon: {
       16: 'icons/icon16.png',
       48: 'icons/icon48.png',

@@ -13,6 +13,8 @@ import {
 } from '@/lib/storage'
 import { defaultRunState, savedJobDefaults } from '@/lib/schema'
 import type { JobSource } from '@/lib/schema'
+import { logError, logInfo, logWarn } from '@/lib/debug-log'
+import { buildSearchUrl, type SearchSpec } from '@/lib/search-url'
 import { detectJobBoard, isApplyContinuation } from './boards'
 import { clearContentFrame, resolveContentFrame } from './frames'
 import { ensureContentScript, getActiveTab } from './injector'
@@ -59,19 +61,57 @@ async function withFreshDailyCount(state: RunState): Promise<RunState> {
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-export async function startRun(): Promise<Ack> {
+/**
+ * Start a run.
+ *
+ * With a `spec`, the run goes and finds the search itself: it builds the
+ * board's own search URL from the role and filters, navigates a tab there and
+ * waits for it to load. Without one, it uses whatever search the active tab is
+ * already showing.
+ *
+ * The spec path is the one that matters. Demanding the user already be on a
+ * correctly-filtered search page is a strange thing to ask when the extension
+ * knows the role and every board encodes its search in the URL — and it is
+ * the reason starting a run "did nothing" from anywhere else.
+ */
+export async function startRun(spec?: SearchSpec): Promise<Ack> {
   const existing = await getRunState()
   if (existing.status === 'running') return { ok: false, error: 'A run is already in progress.' }
 
   const tab = await getActiveTab()
   if (!tab?.id) return { ok: false, error: 'No active tab.' }
 
-  const board = detectJobBoard(tab.url)
+  let boardUrl = tab.url ?? ''
+
+  if (spec) {
+    let target: string
+    try {
+      target = buildSearchUrl(spec)
+    } catch (err) {
+      return { ok: false, error: describeError(err) }
+    }
+
+    void logInfo('run', `Opening the ${spec.platform} search`, hostOf(target))
+
+    try {
+      await chrome.tabs.update(tab.id, { url: target })
+    } catch (err) {
+      return { ok: false, error: `Could not open the search page: ${describeError(err)}` }
+    }
+
+    const landed = await waitForTabSettled(tab.id, CONTINUATION_LOAD_MS)
+    if (!landed) return { ok: false, error: 'The search page never finished loading.' }
+
+    boardUrl = landed
+  }
+
+  const board = detectJobBoard(boardUrl)
   if (!board) {
+    void logError('run', 'Not a supported job search', hostOf(boardUrl))
     return {
       ok: false,
       error:
-        'This page isn’t a supported job search. Open a LinkedIn search (linkedin.com/jobs/search) or an Indeed search (indeed.com/jobs?q=…), then start the run.',
+        'This page isn’t a supported job search. Type a role above and press Start, or open a LinkedIn or Indeed search yourself.',
     }
   }
 
@@ -85,10 +125,14 @@ export async function startRun(): Promise<Ack> {
   const settings = await getSettings()
   const fresh = await withFreshDailyCount({ ...defaultRunState(), ...existing })
 
-  const remaining = settings.dailyCap - fresh.dailyCount
-  if (remaining <= 0) {
+  const dailyRemaining = settings.dailyCap - fresh.dailyCount
+  if (dailyRemaining <= 0) {
     return { ok: false, error: `Daily cap of ${settings.dailyCap} already reached.` }
   }
+
+  // Two independent limits, and the tighter one wins: the daily cap is a
+  // standing safety limit, `maxPerRun` is "how many do I want right now".
+  const remaining = spec ? Math.min(dailyRemaining, spec.maxPerRun) : dailyRemaining
 
   await setRunState({
     ...defaultRunState(),
@@ -99,7 +143,7 @@ export async function startRun(): Promise<Ack> {
     // Only stored for boards that navigate away to apply — it is what the run
     // steers back to between jobs, and there is nothing to steer back to on a
     // board whose flow never leaves the page.
-    boardUrl: board.navigatesToApply ? (tab.url ?? '') : '',
+    boardUrl: board.navigatesToApply ? boardUrl : '',
     startedAt: Date.now(),
     countedOn: today(),
     dailyCount: fresh.dailyCount,
@@ -113,6 +157,7 @@ export async function startRun(): Promise<Ack> {
     const response = await sendToTab(tab.id, 'cs/collect-jobs', { limit: remaining * 3 }, { frameId })
     jobs = response.jobs
     scrapedCount = response.jobs.length
+    void logInfo('run', `Collected ${scrapedCount} job(s) from ${board.label}`)
 
     // The content script already knows the specific reason (signed out,
     // nothing on the page matched at all, everything failed the keyword
@@ -122,6 +167,7 @@ export async function startRun(): Promise<Ack> {
       return { ok: false, error: response.emptyReason }
     }
   } catch (err) {
+    void logError('run', 'Collecting jobs failed', describeError(err))
     await patchRunState({ status: 'idle', lastError: describeError(err) })
     return { ok: false, error: describeError(err) }
   }
@@ -589,6 +635,7 @@ async function advanceCursor(): Promise<void> {
 }
 
 async function bumpCounter(field: 'skipped' | 'failed', message: string): Promise<void> {
+  void logWarn('run', field === 'failed' ? 'Job failed' : 'Job skipped', message)
   const state = await getRunState()
   await patchRunState({
     [field]: state[field] + 1,

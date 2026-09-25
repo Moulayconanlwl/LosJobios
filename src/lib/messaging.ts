@@ -1,5 +1,7 @@
 import type { ValidationError } from '@/content/validation'
 import type { CapturedJob, FieldKind, JobRef, PendingQuestion, RunState } from './schema'
+import type { LogEntry } from './debug-log'
+import type { SearchSpec } from './search-url'
 
 /**
  * One typed map for every message that crosses a context boundary. Adding a
@@ -100,7 +102,14 @@ export type SiteReport = {
 
 export type MessageMap = {
   // ---- UI → background -------------------------------------------------
-  'run/start': { req: Record<string, never>; res: Ack }
+  /**
+   * Start a run. With a `spec` the run opens the board's own search page for
+   * that role; without one it uses whatever search the active tab is showing.
+   */
+  'run/start': { req: { spec?: SearchSpec }; res: Ack }
+  /** The run log, for the Logs tab. */
+  'run/log': { req: Record<string, never>; res: { entries: LogEntry[] } }
+  'run/log-clear': { req: Record<string, never>; res: Ack }
   'run/pause': { req: Record<string, never>; res: Ack }
   'run/resume': { req: Record<string, never>; res: Ack }
   'run/stop': { req: Record<string, never>; res: Ack }

@@ -1,383 +1,133 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { ValidationError } from '@/content/validation'
-import { sendToBackground, type FieldProposal, type SiteReport } from '@/lib/messaging'
-import { Badge } from '../components/badge'
-import { CheckIcon, DocIcon, SearchIcon, SparkIcon } from '../components/icons'
-import { Banner, Button, Input, Select, Textarea, cx } from '../components/ui'
-import { useProfile, useTranslation } from '../hooks'
+import { useState } from 'react'
+import { sendToBackground } from '@/lib/messaging'
+import { Button, cx } from '../components/ui'
+import { useRunState, useSettings } from '../hooks'
+import { AutoApplyTab } from './AutoApplyTab'
+import { LogsTab } from './LogsTab'
+import { ReviewTab } from './ReviewTab'
 
 /**
- * The review workspace.
+ * The side panel shell.
  *
- * Everything here exists so that filling a form is something the user does
- * rather than something that happens to them. The panel scans, shows every
- * proposed value with where it came from, and writes only what survives that
- * review — which is why it lives in a side panel rather than the popup: a
- * popup closes the moment you click the form you are trying to check.
- *
- * The sequence is deliberately one-way. Nothing is written by scanning, and
- * the write button says how many fields it is about to touch, so the number
- * on the button is the promise being made.
+ * The panel, not the popup, is the place a run is driven from — and that is a
+ * functional decision rather than a stylistic one. A popup closes the instant
+ * you click anything on the page, which is exactly what you do while watching
+ * a run work or checking what it proposes to type. The panel stays open beside
+ * the tab it is driving.
  */
 
-type Stage = 'idle' | 'scanning' | 'review' | 'done' | 'error'
+type Tab = 'auto' | 'review' | 'logs'
 
-function sourceTone(source: FieldProposal['source']) {
-  switch (source) {
-    case 'bank':
-      return 'good' as const
-    case 'profile':
-    case 'heuristic':
-      return 'info' as const
-    case 'ai':
-      return 'ai' as const
-    default:
-      return 'neutral' as const
-  }
-}
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'auto', label: 'Auto apply' },
+  { id: 'review', label: 'Review' },
+  { id: 'logs', label: 'Logs' },
+]
 
-function sourceLabel(source: FieldProposal['source']): string {
-  switch (source) {
-    case 'bank':
-      return 'saved answer'
-    case 'profile':
-    case 'heuristic':
-      return 'profile'
-    case 'ai':
-      return 'AI draft'
+/** Run status as a colour and a word, never a colour alone. */
+function statusOf(status: string | undefined): { dot: string; label: string } {
+  switch (status) {
+    case 'running':
+      return { dot: 'bg-emerald-500', label: 'Running' }
+    case 'paused':
+      return { dot: 'bg-amber-500', label: 'Paused' }
+    case 'blocked':
+      return { dot: 'bg-amber-500', label: 'Needs you' }
+    case 'finished':
+      return { dot: 'bg-sky-500', label: 'Finished' }
     default:
-      return 'unresolved'
+      return { dot: 'bg-zinc-400', label: 'Idle' }
   }
 }
 
 export function SidePanel() {
-  const { data: profile } = useProfile()
-  const t = useTranslation()
+  const [tab, setTab] = useState<Tab>('auto')
+  const { data: settings } = useSettings()
+  const { data: run } = useRunState()
 
-  const [stage, setStage] = useState<Stage>('idle')
-  const [site, setSite] = useState<SiteReport | null>(null)
-  const [proposals, setProposals] = useState<FieldProposal[]>([])
-  const [skipped, setSkipped] = useState(0)
-  const [error, setError] = useState('')
-  const [result, setResult] = useState('')
-  const [drafting, setDrafting] = useState(false)
-  const [errors, setErrors] = useState<ValidationError[]>([])
-
-  const selectedCount = useMemo(
-    () => proposals.filter((proposal) => proposal.selected && proposal.value.trim()).length,
-    [proposals],
-  )
-
-  // Report what the page is as soon as the panel opens, so the user knows
-  // where they stand before pressing anything.
-  useEffect(() => {
-    let cancelled = false
-    void sendToBackground('panel/site-report')
-      .then((report) => {
-        if (!cancelled && report.ok && report.site) setSite(report.site)
-      })
-      .catch(() => {
-        // An unsupported page simply has nothing to report.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const scan = async () => {
-    setStage('scanning')
-    setError('')
-    setResult('')
-    setErrors([])
-    try {
-      const response = await sendToBackground('panel/plan-fields')
-      if (!response.ok) throw new Error(response.error)
-      if (!response.plan) throw new Error('Could not read this page.')
-
-      setProposals(response.plan.proposals)
-      setSkipped(response.plan.skipped)
-      setSite(response.plan.site)
-      setStage('review')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-      setStage('error')
-    }
-  }
-
-  const draft = async () => {
-    setDrafting(true)
-    setError('')
-    try {
-      const response = await sendToBackground('panel/draft-answers')
-      if (!response.ok) throw new Error(response.error)
-      if (!response.proposals) throw new Error('Could not draft answers.')
-
-      // Drafts replace the unresolved entry for the same field rather than
-      // appearing twice.
-      setProposals((current) => {
-        const drafted = new Map(response.proposals?.map((p) => [p.handle, p]) ?? [])
-        const merged = current.map((existing) => drafted.get(existing.handle) ?? existing)
-        for (const [handle, proposal] of drafted) {
-          if (!merged.some((entry) => entry.handle === handle)) merged.push(proposal)
-        }
-        return merged
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setDrafting(false)
-    }
-  }
-
-  const fill = async () => {
-    setError('')
-    try {
-      const response = await sendToBackground('panel/apply-plan', { decisions: proposals })
-      if (!response.ok) throw new Error(response.error)
-      if (!response.result) throw new Error('Could not fill the form.')
-
-      const { filled, failed, skipped: left, errors: rejected } = response.result
-      setResult(
-        `Filled ${filled} field${filled === 1 ? '' : 's'}.` +
-          (left.length ? ` Left ${left.length} for you.` : '') +
-          (failed ? ` ${failed} could not be written.` : ''),
-      )
-      setErrors(rejected)
-      setStage('done')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-      setStage('error')
-    }
-  }
-
-  const update = (handle: string, patch: Partial<FieldProposal>) => {
-    setProposals((current) =>
-      current.map((proposal) => (proposal.handle === handle ? { ...proposal, ...patch } : proposal)),
-    )
-  }
-
-  const setAll = (selected: boolean) => {
-    setProposals((current) =>
-      current.map((proposal) =>
-        proposal.value.trim() ? { ...proposal, selected } : proposal,
-      ),
-    )
-  }
-
-  const profileThin = profile ? !profile.firstName || !profile.email : false
+  const status = statusOf(run?.status)
+  const done = (run?.applied ?? 0) + (run?.skipped ?? 0) + (run?.failed ?? 0)
+  const total = run?.queue.length ?? 0
 
   return (
-    <div className="flex min-h-screen flex-col gap-3 bg-zinc-50 p-3 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <header className="flex items-center gap-2">
-        <span className="grid h-7 w-7 flex-none place-items-center rounded-lg bg-indigo-600 text-xs font-bold text-white">
-          LJ
-        </span>
-        <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold">{t('panel.title')}</h1>
-          <p className="truncate text-xs text-zinc-500">{t('panel.subtitle')}</p>
+    <div className="flex h-screen flex-col bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <header className="border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex items-center gap-2 px-3 py-2.5">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold">LosJobios</div>
+            <div className="truncate text-[11px] text-zinc-500">
+              Stop retyping your life story.
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="ml-auto"
+            onClick={() => void sendToBackground('dashboard/open', {})}
+          >
+            Dashboard
+          </Button>
         </div>
+
+        <div className="flex items-center gap-2 px-3 pb-2">
+          <span className={cx('h-2 w-2 shrink-0 rounded-full', status.dot)} />
+          <span className="text-xs font-medium">{status.label}</span>
+          {total > 0 ? (
+            <span className="ml-auto text-xs tabular-nums text-zinc-500">
+              {done} / {total}
+            </span>
+          ) : null}
+        </div>
+
+        {total > 0 ? (
+          <div className="mx-3 mb-2 h-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all"
+              style={{ width: `${Math.round((done / total) * 100)}%` }}
+            />
+          </div>
+        ) : null}
+
+        {run?.lastError ? (
+          <p className="mx-3 mb-2 rounded-md bg-red-50 px-2 py-1.5 text-[11px] text-red-700 dark:bg-red-950 dark:text-red-300">
+            {run.lastError}
+          </p>
+        ) : null}
+
+        <nav className="flex border-t border-zinc-200 dark:border-zinc-800">
+          {TABS.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => setTab(entry.id)}
+              className={cx(
+                'flex-1 border-b-2 px-2 py-2 text-xs font-medium transition-colors',
+                tab === entry.id
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200',
+              )}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </nav>
       </header>
 
-      {site ? <SiteBanner site={site} /> : null}
-
-      {profileThin ? (
-        <Banner tone="warn">
-          {t('panel.profileThin')}{' '}
-          <button className="font-semibold underline" onClick={() => void chrome.runtime.openOptionsPage()}>
-            {t('panel.fillItIn')}
-          </button>
-          .
-        </Banner>
-      ) : null}
-
-      <div className="flex flex-wrap gap-2">
-        <Button variant="primary" size="sm" disabled={stage === 'scanning'} onClick={() => void scan()}>
-          <SearchIcon className="h-3.5 w-3.5" />
-          {stage === 'scanning' ? t('panel.scanning') : t('panel.scan')}
-        </Button>
-        {stage === 'review' ? (
-          <Button variant="secondary" size="sm" disabled={drafting} onClick={() => void draft()}>
-            <SparkIcon className="h-3.5 w-3.5" />
-            {drafting ? t('panel.drafting') : t('panel.draft')}
-          </Button>
-        ) : null}
-      </div>
-
-      {error ? <Banner tone="error">{error}</Banner> : null}
-      {result ? <Banner tone="success">{result}</Banner> : null}
-
-      {errors.length ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 dark:border-amber-900 dark:bg-amber-950">
-          <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
-            {t('panel.rejected')} ({errors.length})
-          </p>
-          <ul className="mt-1.5 flex list-disc flex-col gap-1 pl-4 text-xs text-amber-900 dark:text-amber-200">
-            {errors.map((entry, index) => (
-              <li key={index}>
-                {entry.fieldLabel ? <strong>{entry.fieldLabel}: </strong> : null}
-                {entry.message}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-1.5 text-[11px] text-amber-800 dark:text-amber-300">
-            {t('panel.rejectedHint')}
-          </p>
-        </div>
-      ) : null}
-
-      {stage === 'idle' ? (
-        <EmptyState />
-      ) : null}
-
-      {stage === 'review' || stage === 'done' ? (
-        <>
-          <div className="flex items-center justify-between text-xs text-zinc-500">
-            <span>
-              {proposals.length} proposed
-              {skipped ? ` · ${skipped} already filled` : ''}
-            </span>
-            <span className="flex gap-2">
-              <button className="underline" onClick={() => setAll(true)}>
-                {t('panel.selectAll')}
-              </button>
-              <button className="underline" onClick={() => setAll(false)}>
-                {t('panel.selectNone')}
-              </button>
-            </span>
-          </div>
-
-          <ul className="flex flex-col gap-2">
-            {proposals.map((proposal) => (
-              <ProposalRow key={proposal.handle} proposal={proposal} onChange={update} />
-            ))}
-          </ul>
-
-          {proposals.length === 0 ? (
-            <p className="py-6 text-center text-xs text-zinc-500">
-              {t('panel.nothingLeft')}
-            </p>
-          ) : null}
-        </>
-      ) : null}
-
-      {stage === 'review' && proposals.length > 0 ? (
-        <div className="sticky bottom-0 -mx-3 mt-auto border-t border-zinc-200 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-          <Button
-            variant="primary"
-            className="w-full"
-            disabled={selectedCount === 0}
-            onClick={() => void fill()}
-          >
-            <CheckIcon className="h-4 w-4" />
-            {selectedCount === 0
-              ? t('panel.nothingSelected')
-              : `Fill ${selectedCount} selected field${selectedCount === 1 ? '' : 's'}`}
-          </Button>
-          <p className="mt-1.5 text-center text-[11px] text-zinc-500">
-            {t('panel.neverSubmits')}
-          </p>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function SiteBanner({ site }: { site: SiteReport }) {
-  const tone = site.kind === 'no-form' ? 'warn' : site.kind === 'known-ats' ? 'success' : 'info'
-  return <Banner tone={tone}>{site.message}</Banner>
-}
-
-function EmptyState() {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center">
-      <DocIcon className="h-8 w-8 text-zinc-300 dark:text-zinc-700" />
-      <p className="text-sm font-medium">Open an application form</p>
-      <p className="max-w-[16rem] text-xs text-zinc-500">
-        Press <strong>Scan this form</strong> and every field it can fill is listed here first,
-        with where each value came from. You decide what gets written.
-      </p>
-    </div>
-  )
-}
-
-function ProposalRow({
-  proposal,
-  onChange,
-}: {
-  proposal: FieldProposal
-  onChange: (handle: string, patch: Partial<FieldProposal>) => void
-}) {
-  const unresolved = !proposal.value.trim()
-  const isLong = proposal.kind === 'textarea' || proposal.value.length > 60
-
-  return (
-    <li
-      className={cx(
-        'rounded-xl border p-2.5 transition-colors',
-        proposal.selected
-          ? 'border-indigo-300 bg-white dark:border-indigo-800 dark:bg-zinc-900'
-          : 'border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/40',
-      )}
-    >
-      <div className="flex items-start gap-2">
-        <input
-          type="checkbox"
-          className="mt-0.5 flex-none rounded"
-          checked={proposal.selected}
-          disabled={unresolved}
-          aria-label={`Fill ${proposal.label}`}
-          onChange={(e) => onChange(proposal.handle, { selected: e.target.checked })}
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="truncate text-xs font-medium">{proposal.label}</span>
-            {proposal.required ? <Badge tone="warn">required</Badge> : null}
-            <Badge tone={sourceTone(proposal.source)}>{sourceLabel(proposal.source)}</Badge>
-          </div>
-
-          <p className="mt-0.5 text-[11px] text-zinc-500">{proposal.reason}</p>
-
-          {proposal.attachment ? (
-            <p className="mt-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs dark:bg-zinc-800">
-              {proposal.value}
-            </p>
-          ) : unresolved ? (
-            <Input
-              className="mt-1.5 text-xs"
-              placeholder="Type an answer to include this field…"
-              value={proposal.value}
-              onChange={(e) =>
-                onChange(proposal.handle, { value: e.target.value, selected: Boolean(e.target.value.trim()) })
-              }
-            />
-          ) : proposal.options.length ? (
-            <Select
-              className="mt-1.5 text-xs"
-              value={proposal.value}
-              onChange={(e) => onChange(proposal.handle, { value: e.target.value })}
-            >
-              {proposal.options.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </Select>
-          ) : isLong ? (
-            <Textarea
-              rows={4}
-              className="mt-1.5 text-xs"
-              value={proposal.value}
-              onChange={(e) => onChange(proposal.handle, { value: e.target.value })}
-            />
+      <main className="min-h-0 flex-1 overflow-y-auto">
+        {tab === 'auto' ? (
+          settings ? (
+            <AutoApplyTab settings={settings} run={run} />
           ) : (
-            <Input
-              className="mt-1.5 text-xs"
-              value={proposal.value}
-              onChange={(e) => onChange(proposal.handle, { value: e.target.value })}
-            />
-          )}
-        </div>
-      </div>
-    </li>
+            <p className="p-4 text-xs text-zinc-500">Loading…</p>
+          )
+        ) : null}
+        {tab === 'review' ? <ReviewTab /> : null}
+        {tab === 'logs' ? <LogsTab /> : null}
+      </main>
+
+      <footer className="border-t border-zinc-200 px-3 py-1.5 text-center text-[11px] text-zinc-400 dark:border-zinc-800">
+        This never submits a form you haven&rsquo;t reviewed.
+      </footer>
+    </div>
   )
 }

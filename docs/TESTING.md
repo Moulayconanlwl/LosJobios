@@ -4,7 +4,7 @@
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm test            # vitest run — 423 tests across 32 files
+npm test            # vitest run — 487 tests across 35 files
 npm run build       # tsc --noEmit && vite build
 ```
 
@@ -118,8 +118,12 @@ Load the extension first: `npm run build`, then `chrome://extensions` → Develo
 
 Dry run stays on for all of this. It walks the entire flow and stops at Submit.
 
-1. Open an Indeed search (`indeed.com/jobs?q=…`, or `fr.indeed.com` — any country site).
-2. Popup → **Start on this page**.
+1. Click the toolbar icon. **The side panel opens** — there is no popup any more.
+2. **Auto apply** tab: Platform **Indeed**, Market **Auto**, Role `product owner AI`,
+   Location `Paris`. Check the `Opens:` line underneath reads `fr.indeed.com` and not
+   `uk.indeed.com`.
+3. Press **Start**. **Verify it navigates the tab to the search by itself** — you should
+   not have to be on Indeed beforehand. This is the step that was broken.
 3. **Verify** it queues jobs. If it says zero, the message should name *why* — signed
    out, no cards found at all, or everything filtered — not a generic failure.
 4. Watch one job go through and check each of these in order:

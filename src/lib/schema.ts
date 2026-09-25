@@ -122,6 +122,33 @@ export const latexSettingsSchema = z.object({
   coverLetter: z.string().default(''),
 })
 
+/** Filters that map onto the boards' own search facets. */
+export const searchFiltersSchema = z.object({
+  location: z.string().default(''),
+  workType: z.enum(['', 'remote', 'hybrid', 'on_site']).default(''),
+  experience: z.enum(['', 'entry', 'associate', 'mid_senior', 'director', 'executive']).default(''),
+  datePosted: z.enum(['', '24h', 'week', 'month']).default(''),
+})
+
+export const searchSpecSchema = z.object({
+  platform: z.enum(['linkedin', 'indeed']).default('indeed'),
+  /** Free text, exactly as it goes into the board's own search box. */
+  role: z.string().default(''),
+  market: z.enum(['auto', 'fr', 'uk', 'us', 'ca', 'au', 'de', 'es']).default('auto'),
+  filters: searchFiltersSchema.default({}),
+  /**
+   * Restrict the search to postings applyable without leaving the board.
+   * On by default: the alternative is opening jobs one at a time to discover
+   * they apply somewhere this cannot follow.
+   */
+  easyApplyOnly: z.boolean().default(true),
+  /** How many applications this run may make before stopping. */
+  maxPerRun: z.number().min(1).max(25).default(3),
+})
+
+export type SearchFiltersSetting = z.infer<typeof searchFiltersSchema>
+export type SearchSpecSetting = z.infer<typeof searchSpecSchema>
+
 export const settingsSchema = z.object({
   /** Drives the whole modal but never clicks the final Submit. On by default. */
   dryRun: z.boolean().default(true),
@@ -140,6 +167,15 @@ export const settingsSchema = z.object({
   titleIncludeKeywords: z.array(z.string()).default([]),
   titleExcludeKeywords: z.array(z.string()).default([]),
   blockedCompanies: z.array(z.string()).default([]),
+
+  /**
+   * What the run should go and search for.
+   *
+   * Persisted so Start is a single click next time, and so a run that is
+   * interrupted can be restarted without retyping anything. Additive: an
+   * older stored settings record fills these from the defaults on read.
+   */
+  search: searchSpecSchema.default({}),
 
   ai: aiSettingsSchema.default({}),
   latex: latexSettingsSchema.default({}),

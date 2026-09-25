@@ -12,6 +12,7 @@ import {
   setCapturedJob,
 } from '@/lib/storage'
 import { claimContentFrame, resolveContentFrame } from './frames'
+import { clearLog, readLog } from '@/lib/debug-log'
 import { detectJobBoard } from './boards'
 import { ensureContentScript, getActiveTab, isInjectable } from './injector'
 import {
@@ -158,7 +159,12 @@ async function scrapeDescription(tabId: number, timeoutMs = 12_000): Promise<str
 }
 
 registerHandlers({
-  'run/start': () => startRun(),
+  'run/start': ({ spec }) => startRun(spec),
+  'run/log': async () => ({ entries: await readLog() }),
+  'run/log-clear': async () => {
+    await clearLog()
+    return { ok: true as const }
+  },
   'run/pause': () => pauseRun(),
   'run/resume': () => resumeRun(),
   'run/stop': () => stopRun(),
@@ -484,6 +490,18 @@ registerHandlers({
     }
   },
 })
+
+/**
+ * Open the side panel when the toolbar icon is clicked.
+ *
+ * Registered unconditionally at top level, like every other listener here: the
+ * worker is torn down constantly, and this must exist the moment the click
+ * arrives. `setPanelBehavior` only works while the action has no
+ * `default_popup`, which is why the manifest declares none.
+ */
+chrome.sidePanel
+  ?.setPanelBehavior({ openPanelOnActionClick: true })
+  .catch((err) => console.warn('[LosJobios] could not set panel behavior', err))
 
 installWatchdog()
 watchTabs()

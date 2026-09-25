@@ -125,7 +125,10 @@ export function Popup() {
               void run(() =>
                 status === 'paused'
                   ? sendToBackground('run/resume')
-                  : sendToBackground('run/start'),
+                  // No spec: this button runs against whatever search the
+                  // current tab is showing. Starting from a role lives in the
+                  // side panel, which can stay open while the run works.
+                  : sendToBackground('run/start', {}),
               )
             }
           >
