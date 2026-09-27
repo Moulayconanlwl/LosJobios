@@ -17,7 +17,7 @@ import { logError, logInfo, logWarn } from '@/lib/debug-log'
 import { buildSearchUrl, type SearchSpec } from '@/lib/search-url'
 import { detectJobBoard, isApplyContinuation } from './boards'
 import { clearContentFrame, resolveContentFrame } from './frames'
-import { ensureContentScript, getActiveTab } from './injector'
+import { ensureContentScript, getActiveTab, isInjectable } from './injector'
 
 /**
  * The run engine.
@@ -78,10 +78,9 @@ export async function startRun(spec?: SearchSpec): Promise<Ack> {
   const existing = await getRunState()
   if (existing.status === 'running') return { ok: false, error: 'A run is already in progress.' }
 
-  const tab = await getActiveTab()
-  if (!tab?.id) return { ok: false, error: 'No active tab.' }
-
-  let boardUrl = tab.url ?? ''
+  const active = await getActiveTab()
+  let tabId = active?.id ?? null
+  let boardUrl = active?.url ?? ''
 
   if (spec) {
     let target: string
@@ -93,16 +92,44 @@ export async function startRun(spec?: SearchSpec): Promise<Ack> {
 
     void logInfo('run', `Opening the ${spec.platform} search`, hostOf(target))
 
+    /*
+     * Don't drive whatever happens to be on screen.
+     *
+     * Start is pressed from the side panel, and the tab behind it is very
+     * often the extension's own dashboard or a chrome:// page — neither of
+     * which can be scripted. Navigating one of those and then failing to
+     * inject is exactly the "Could not reach the page. Try reloading it."
+     * dead end, and reloading cannot fix it because the page was never
+     * injectable in the first place. Open a fresh tab instead.
+     */
     try {
-      await chrome.tabs.update(tab.id, { url: target })
+      if (tabId !== null && isInjectable(active?.url)) {
+        await chrome.tabs.update(tabId, { url: target })
+      } else {
+        void logInfo('run', 'Current tab cannot be scripted — opening a new one for the run')
+        const created = await chrome.tabs.create({ url: target, active: true })
+        tabId = created.id ?? null
+      }
     } catch (err) {
       return { ok: false, error: `Could not open the search page: ${describeError(err)}` }
     }
 
-    const landed = await waitForTabSettled(tab.id, CONTINUATION_LOAD_MS)
+    if (tabId === null) return { ok: false, error: 'Could not open a tab for the run.' }
+
+    const landed = await waitForTabSettled(tabId, CONTINUATION_LOAD_MS)
     if (!landed) return { ok: false, error: 'The search page never finished loading.' }
 
     boardUrl = landed
+  }
+
+  if (tabId === null) return { ok: false, error: 'No active tab.' }
+
+  if (!isInjectable(boardUrl)) {
+    return {
+      ok: false,
+      error:
+        'This kind of page can’t be driven. Type a role above and press Start — the run will open the search in its own tab.',
+    }
   }
 
   const board = detectJobBoard(boardUrl)
@@ -115,12 +142,19 @@ export async function startRun(spec?: SearchSpec): Promise<Ack> {
     }
   }
 
-  const ready = await ensureContentScript(tab.id)
-  if (!ready) return { ok: false, error: 'Could not reach the page. Try reloading it.' }
+  const ready = await ensureContentScript(tabId)
+  if (!ready) {
+    void logError('run', 'Could not get a content script into the search page', hostOf(boardUrl))
+    return {
+      ok: false,
+      error:
+        'Could not reach the search page. Reload that tab, make sure you are signed in, and try again — the Logs tab has the detail.',
+    }
+  }
 
   // A run is worthless against the wrong frame, so this one waits for a
   // claim rather than falling straight back to frame 0.
-  const frameId = await resolveContentFrame(tab.id, 8000)
+  const frameId = await resolveContentFrame(tabId, 8000)
 
   const settings = await getSettings()
   const fresh = await withFreshDailyCount({ ...defaultRunState(), ...existing })
@@ -137,7 +171,7 @@ export async function startRun(spec?: SearchSpec): Promise<Ack> {
   await setRunState({
     ...defaultRunState(),
     status: 'running',
-    tabId: tab.id,
+    tabId,
     frameId: frameId ?? null,
     board: board.id,
     // Only stored for boards that navigate away to apply — it is what the run
@@ -154,7 +188,7 @@ export async function startRun(spec?: SearchSpec): Promise<Ack> {
   let scrapedCount = 0
   try {
     // Over-fetch: a good share get filtered out as already-applied or external.
-    const response = await sendToTab(tab.id, 'cs/collect-jobs', { limit: remaining * 3 }, { frameId })
+    const response = await sendToTab(tabId, 'cs/collect-jobs', { limit: remaining * 3 }, { frameId })
     jobs = response.jobs
     scrapedCount = response.jobs.length
     void logInfo('run', `Collected ${scrapedCount} job(s) from ${board.label}`)
@@ -225,7 +259,7 @@ export async function startRun(spec?: SearchSpec): Promise<Ack> {
   void logActivity({
     kind: 'run-started',
     summary: `Queued ${jobs.length} job${jobs.length === 1 ? '' : 's'} from a ${board.label} search.`,
-    site: hostOf(tab.url),
+    site: hostOf(boardUrl),
   })
 
   void ensureLoop()

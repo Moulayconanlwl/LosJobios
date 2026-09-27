@@ -1,5 +1,6 @@
 import contentScriptUrl from '@/content/index?script'
 import { NoReceiverError, sendToTab } from '@/lib/messaging'
+import { logError, logWarn } from '@/lib/debug-log'
 
 /**
  * Getting a content script into a tab.
@@ -41,11 +42,17 @@ export async function ensureContentScript(tabId: number): Promise<boolean> {
 
   try {
     await chrome.scripting.executeScript({
-      target: { tabId },
+      // `allFrames` matters on any site that renders its real content in a
+      // same-origin iframe — LinkedIn's authenticated job search among them.
+      // Injecting only frame 0 there puts the script in an empty shell, and
+      // the frame holding the job list never gets one, so the run reports
+      // that it cannot reach the page.
+      target: { tabId, allFrames: true },
       files: [contentScriptUrl],
     })
   } catch (err) {
     console.warn('[LosJobios] injection failed', err)
+    void logError('inject', 'Could not inject the content script', describeError(err))
     return false
   }
 
@@ -60,5 +67,10 @@ export async function ensureContentScript(tabId: number): Promise<boolean> {
     }
   }
 
+  void logWarn('inject', 'Injected the content script but it never answered a ping')
   return false
+}
+
+function describeError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }

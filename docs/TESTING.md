@@ -4,7 +4,7 @@
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm test            # vitest run — 498 tests across 37 files
+npm test            # vitest run — 504 tests across 38 files
 npm run build       # tsc --noEmit && vite build
 ```
 
@@ -198,6 +198,16 @@ getting one wrong is how a run wanders somewhere it shouldn't.
    step's field count, each field's outcome, and which button it pressed.
 3. **Verify the privacy property:** the log shows field *labels* and outcomes, never
    a value you or the AI typed into a box.
+
+### 13d. Fetching a description
+
+1. Dashboard → **Jobs & materials** → pick a saved job with **No Description**.
+2. Press **Fetch description**.
+3. **Verify it is the posting**, not the page around it. Specifically it must NOT
+   contain "Reactivate Premium", "LinkedIn Corporation", or the list of languages
+   — those were what came back before.
+4. **Verify an empty result says so** rather than saving page furniture: if the
+   posting genuinely cannot be read, the panel should report nothing found.
 
 ### 14. Regression check on existing features
 

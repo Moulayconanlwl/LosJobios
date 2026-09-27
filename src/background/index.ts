@@ -13,6 +13,7 @@ import {
 } from '@/lib/storage'
 import { claimContentFrame, resolveContentFrame } from './frames'
 import { clearLog, log, logInfo, readLog } from '@/lib/debug-log'
+import { extractDescription } from '@/lib/extract-description'
 import { detectJobBoard } from './boards'
 import { ensureContentScript, getActiveTab, isInjectable } from './injector'
 import {
@@ -97,51 +98,19 @@ async function scrapeDescription(tabId: number, timeoutMs = 12_000): Promise<str
   const deadline = Date.now() + timeoutMs
 
   while (Date.now() < deadline) {
+    // The greedy fallback is only allowed near the end, so a page that simply
+    // has not rendered its description yet is given the whole window to do so
+    // before anything cruder is tried.
+    const allowFallback = Date.now() > deadline - 2500
     let results: chrome.scripting.InjectionResult<string>[] = []
 
     try {
       results = await chrome.scripting.executeScript({
         target: { tabId, allFrames: true },
-        // Self-contained on purpose: this is serialized into every frame, so
-        // it can close over nothing from up here.
-        func: () => {
-          const selectors = [
-            // LinkedIn, across its authenticated and signed-out layouts.
-            '#job-details',
-            '.jobs-description__content',
-            '.jobs-description-content__text',
-            '.jobs-box__html-content',
-            '.show-more-less-html__markup',
-            '.description__text',
-            '[class*="jobs-description"]',
-            '[class*="description__text"]',
-            // Indeed. `#jobDescriptionText` is the stable one and has
-            // outlived several redesigns of everything around it.
-            '#jobDescriptionText',
-            '.jobsearch-JobComponent-description',
-            '#vjs-desc',
-            // Anything else.
-            'article',
-            'main',
-          ]
-
-          let best = ''
-          for (const selector of selectors) {
-            for (const el of Array.from(document.querySelectorAll(selector))) {
-              const node = el as HTMLElement
-              // textContent as the fallback: innerText depends on layout and
-              // is empty in a tab that was never painted.
-              const text = (node.innerText || node.textContent || '')
-                .replace(/\s+/g, ' ')
-                .trim()
-              if (text.length > best.length) best = text
-            }
-            // A specific selector that matched well enough is better than a
-            // longer but vaguer match from `main`, so stop early.
-            if (best.length > 400) return best.slice(0, 8000)
-          }
-          return best.slice(0, 8000)
-        },
+        args: [allowFallback],
+        // `extractDescription` closes over nothing, which is what lets it be
+        // serialized into the page. See the note on it.
+        func: extractDescription,
       })
     } catch {
       return '' // no host permission for this site, or the tab went away
