@@ -20,6 +20,8 @@ import {
   isPostApplyDialog,
   suppressDialog,
 } from '../dialog-guard'
+import { csDebug, csError, csInfo, csWarn } from '../log'
+import { checkPageHealth } from './linkedin-health'
 import type { ApplyContext, SiteAdapter } from './types'
 
 /**
@@ -136,11 +138,14 @@ export class LinkedInAdapter implements SiteAdapter {
   // -------------------------------------------------------------------------
 
   async collectJobs(limit: number, ctx: ApplyContext): Promise<JobRef[]> {
+    csInfo('linkedin', `Scanning the job list (want up to ${limit})`)
+
     // The list virtualizes, so scroll it to materialize more cards than the
     // handful that are initially rendered.
     await this.scrollJobList(ctx)
 
     const cards = pickAll(JOB_CARD_SELECTORS)
+    csDebug('linkedin', `${cards.length} card element(s) on the page`)
     const jobs: JobRef[] = []
     const seen = new Set<string>()
 
@@ -156,6 +161,11 @@ export class LinkedInAdapter implements SiteAdapter {
       if (jobs.length >= limit) break
     }
 
+    csInfo(
+      'linkedin',
+      `${jobs.length} job(s) passed the filters`,
+      jobs.slice(0, 5).map((j) => `${j.title} — ${j.company}`).join(' | '),
+    )
     return jobs
   }
 
@@ -364,8 +374,13 @@ export class LinkedInAdapter implements SiteAdapter {
    * the SPA — and us — alive.
    */
   async openJob(job: JobRef, ctx: ApplyContext): Promise<boolean> {
+    csInfo('linkedin', `Opening: ${job.title || 'job'} — ${job.company || 'company'}`)
+
     const card = this.findCard(job.externalId)
-    if (!card) return false
+    if (!card) {
+      csWarn('linkedin', 'That job card is no longer on the page', job.externalId)
+      return false
+    }
 
     const clickable =
       card.querySelector<HTMLElement>('a[href*="/jobs/view/"]') ??
@@ -380,6 +395,7 @@ export class LinkedInAdapter implements SiteAdapter {
       signal: ctx.signal,
     })
 
+    if (!ready) csWarn('linkedin', 'The details pane never showed an apply button')
     await pause(ctx.settings.minActionDelayMs, ctx.settings.maxActionDelayMs, ctx.signal)
     return Boolean(ready)
   }
@@ -462,14 +478,25 @@ export class LinkedInAdapter implements SiteAdapter {
   // -------------------------------------------------------------------------
 
   async apply(ctx: ApplyContext): Promise<ApplyOutcome> {
+    // Checked before anything is clicked. Being signed out or rate limited is
+    // not a failure of *this* application, and carrying on to the next twenty
+    // is both pointless and exactly the pattern that gets an account flagged.
+    const health = checkPageHealth()
+    if (health?.blocking) {
+      csError('linkedin', 'LinkedIn is not in a usable state', health.message)
+      return { result: 'failed', error: health.message }
+    }
+
     const applyButton = this.findApplyButton()
     if (!applyButton) {
+      csWarn('linkedin', 'No Easy Apply button on this posting — it applies off-site')
       return { result: 'skipped', reason: 'No Easy Apply button — external application.' }
     }
 
     // "Applied" replaces the button text once you've already applied.
     const label = (text(applyButton) || applyButton.getAttribute('aria-label') || '').toLowerCase()
     if (TEXT.applied.some((word) => label.includes(word))) {
+      csInfo('linkedin', 'Already applied to this one — skipping')
       return { result: 'skipped', reason: 'Already applied.' }
     }
 
@@ -478,8 +505,10 @@ export class LinkedInAdapter implements SiteAdapter {
 
     const modal = await waitFor(() => this.findModal(), { timeoutMs: 10_000, signal: ctx.signal })
     if (!modal) {
+      csWarn('linkedin', 'The Easy Apply modal never opened after clicking Apply')
       return { result: 'skipped', reason: 'Easy Apply modal never opened.' }
     }
+    csInfo('linkedin', 'Easy Apply modal is open')
 
     return this.driveModal(modal, ctx)
   }
@@ -514,17 +543,59 @@ export class LinkedInAdapter implements SiteAdapter {
       }
       modal = current
 
-      ctx.report(`Easy Apply — step ${step + 1}: ${this.stepTitle(modal)}`)
+      const title = this.stepTitle(modal)
+      ctx.report(`Easy Apply — step ${step + 1}: ${title}`)
+
+      /*
+       * LinkedIn sometimes renders the modal as an empty shell — a loader,
+       * no fields and no footer buttons — for several seconds before the real
+       * step arrives. Treating that as "stuck" fails a perfectly good
+       * application on the spot, so the step is given a chance to populate
+       * before any conclusion is drawn about it.
+       */
+      if (!this.stepHasContent(modal)) {
+        csDebug('linkedin', `Step ${step + 1} is still loading — waiting for it`)
+        const populated = await waitFor(
+          () => {
+            const current = this.findModal()
+            return current && this.stepHasContent(current) ? current : null
+          },
+          { timeoutMs: 12_000, intervalMs: 300, signal: ctx.signal },
+        )
+
+        if (!populated) {
+          csError('linkedin', `Step ${step + 1} never loaded any content`)
+          await this.dismissModal(ctx)
+          return { result: 'failed', error: `Step ${step + 1} never finished loading.` }
+        }
+        modal = populated
+      }
 
       const fields = this.answerableFields(modal)
+      csInfo(
+        'linkedin',
+        `Step ${step + 1} (${title}): ${fields.length} field(s) to answer`,
+        // Labels only. What gets *typed* into them never reaches the log.
+        fields.map((f) => f.label).filter(Boolean).slice(0, 8).join(' | '),
+      )
+
       const summary = await fillFields(fields, ctx)
 
       questionsAnswered += summary.filled
       aiAnswersUsed += summary.results.filter((r) => r.source === 'ai').length
 
+      csInfo(
+        'linkedin',
+        `Step ${step + 1}: filled ${summary.filled}, skipped ${summary.skipped}, failed ${summary.failed}`,
+        summary.unanswered.length
+          ? `Nothing could answer: ${summary.unanswered.map((f) => f.label).filter(Boolean).join(' | ')}`
+          : undefined,
+      )
+
       if (ctx.settings.pauseOnUnknownRequired && summary.blocking.length > 0) {
         const blocker = summary.blocking[0]
         if (blocker) {
+          csWarn('linkedin', 'Stopping to ask you a question', blocker.label)
           await this.dismissModal(ctx)
           return { result: 'blocked', question: this.toPendingQuestion(blocker, ctx) }
         }
@@ -533,6 +604,7 @@ export class LinkedInAdapter implements SiteAdapter {
       const action = this.nextAction(modal)
 
       if (action.kind === 'none') {
+        csError('linkedin', `Stuck on step ${step + 1}: no Next, Review or Submit button`)
         await this.dismissModal(ctx)
         return {
           result: 'failed',
@@ -540,12 +612,16 @@ export class LinkedInAdapter implements SiteAdapter {
         }
       }
 
+      csDebug('linkedin', `Step ${step + 1}: next action is "${action.kind}"`)
+
       if (action.kind === 'submit') {
         if (ctx.dryRun) {
+          csInfo('linkedin', 'Reached Submit — dry run, so discarding instead of sending')
           ctx.report('Dry run — reached Submit, discarding instead.')
           await this.dismissModal(ctx)
           return { result: 'applied', questionsAnswered, aiAnswersUsed }
         }
+        csWarn('linkedin', 'Submitting this application for real')
 
         ctx.report('Submitting application…')
 
@@ -574,6 +650,7 @@ export class LinkedInAdapter implements SiteAdapter {
       const fingerprint = this.fingerprint(modal)
       if (fingerprint === lastFingerprint) {
         const error = this.validationError(modal)
+        csError('linkedin', `Step ${step + 1} would not advance`, error || 'no inline error shown')
         await this.dismissModal(ctx)
         return {
           result: 'failed',
@@ -588,6 +665,17 @@ export class LinkedInAdapter implements SiteAdapter {
 
     await this.dismissModal(ctx)
     return { result: 'failed', error: `Gave up after ${MAX_STEPS} steps.` }
+  }
+
+  /**
+   * Does this step actually have anything on it yet?
+   *
+   * A form control or a footer button both count: some steps are pure review
+   * with no inputs at all, so requiring a field would misread those as empty.
+   */
+  private stepHasContent(modal: HTMLElement): boolean {
+    if (modal.querySelector('input, select, textarea')) return true
+    return this.nextAction(modal).kind !== 'none'
   }
 
   /** Which footer button moves us forward. Submit wins, then Review, then Next. */

@@ -21,9 +21,17 @@ type Props = {
   run: RunState | null
 }
 
+/**
+ * Indeed is parked, not removed.
+ *
+ * Its driver is ported and tested, but nothing about it has been confirmed
+ * against the live site, and a half-working board silently burning a daily cap
+ * is worse than one that is clearly on hold. LinkedIn is the default and the
+ * one being worked on.
+ */
 const PLATFORMS = [
-  { id: 'indeed' as const, label: 'Indeed' },
-  { id: 'linkedin' as const, label: 'LinkedIn' },
+  { id: 'linkedin' as const, label: 'LinkedIn', parked: false },
+  { id: 'indeed' as const, label: 'Indeed (on hold — unverified)', parked: true },
 ]
 
 /** A collapsible group, matching the reference panel's disclosure sections. */
@@ -164,6 +172,14 @@ export function AutoApplyTab({ settings, run }: Props) {
           ))}
         </Select>
       </label>
+
+      {spec.platform === 'indeed' ? (
+        <p className="rounded-md bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900 dark:bg-amber-950 dark:text-amber-300">
+          <strong>Indeed is on hold.</strong> Its driver is written and tested but has never been
+          confirmed against the live site. Leave it on LinkedIn unless you are deliberately
+          testing Indeed, and keep dry run on if you do.
+        </p>
+      ) : null}
 
       <label className="flex flex-col gap-1">
         <Label>Role</Label>

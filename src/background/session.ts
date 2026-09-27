@@ -450,11 +450,13 @@ async function processJob(
     case 'blocked':
       // Deliberately does NOT advance the cursor — once answered, this same job
       // is retried from the top.
+      void logWarn('run', 'Waiting for you to answer a question', outcome.question.question)
       await patchRunState({
         status: 'blocked',
         pendingQuestion: outcome.question,
         lastMessage: 'Waiting on you to answer a question.',
       })
+      notifyBlocked(outcome.question.question, job)
       return false
 
     case 'failed':
@@ -626,6 +628,33 @@ function hostOf(url: string | null | undefined): string {
     return new URL(url).hostname
   } catch {
     return ''
+  }
+}
+
+
+/**
+ * Tell the user the run is waiting, even if the panel is closed.
+ *
+ * A blocked run waits indefinitely by design — the alternative is guessing an
+ * answer that goes to a real employer under the user's name — so the queue can
+ * sit stalled for hours unless something reaches them outside the panel.
+ *
+ * The question text is included because it is the employer's own wording, not
+ * anything the user typed. Their *answer* never leaves the answer bank.
+ */
+function notifyBlocked(question: string, job: JobRef): void {
+  try {
+    chrome.notifications?.create(`losjobios-blocked-${Date.now()}`, {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+      title: 'LosJobios needs an answer',
+      message: question.slice(0, 180),
+      contextMessage: [job.title, job.company].filter(Boolean).join(' — ').slice(0, 100),
+      priority: 2,
+      requireInteraction: true,
+    })
+  } catch {
+    // Notifications are a courtesy; the panel still shows the question.
   }
 }
 

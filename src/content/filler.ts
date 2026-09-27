@@ -1,4 +1,5 @@
 import { sendToBackground } from '@/lib/messaging'
+import { csDebug } from './log'
 import type { AnswerResponse } from '@/lib/messaging'
 import { CONFIDENCE_FLOOR, valueForKey } from '@/lib/fieldrules'
 import {
@@ -230,6 +231,19 @@ export async function fillFields(
 
     const result = await fillField(field, ctx)
     summary.results.push(result)
+
+    /*
+     * One line per field, so a run that stalls can be read back field by
+     * field. The label, the outcome and where the answer came from — never
+     * the value. What gets typed into these boxes is the most sensitive data
+     * the extension holds, and a log is exactly the place people forget to
+     * look when they think about where their data lives.
+     */
+    csDebug(
+      'fill',
+      `${field.label || '(unlabelled)'} → ${result.status}${field.required ? ' (required)' : ''}`,
+      result.source ? `from ${result.source}` : undefined,
+    )
 
     switch (result.status) {
       case 'filled':

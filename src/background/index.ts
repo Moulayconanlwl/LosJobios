@@ -12,7 +12,7 @@ import {
   setCapturedJob,
 } from '@/lib/storage'
 import { claimContentFrame, resolveContentFrame } from './frames'
-import { clearLog, readLog } from '@/lib/debug-log'
+import { clearLog, log, logInfo, readLog } from '@/lib/debug-log'
 import { detectJobBoard } from './boards'
 import { ensureContentScript, getActiveTab, isInjectable } from './injector'
 import {
@@ -172,7 +172,16 @@ registerHandlers({
   'run/answer': ({ answer, remember }) => answerPending(answer, remember),
 
   'run/progress': async ({ message }) => {
+    // Progress lines are also the coarse narration of a run, so they land in
+    // the log as well as in the status line. The status line shows one; the
+    // log keeps all of them.
+    void logInfo('worker', message)
     await patchRunState({ lastMessage: message })
+    return { ok: true as const }
+  },
+
+  'cs/log': async ({ level, scope, message, detail }) => {
+    await log(level, scope, message, detail)
     return { ok: true as const }
   },
 

@@ -1,6 +1,6 @@
 import type { ValidationError } from '@/content/validation'
 import type { CapturedJob, FieldKind, JobRef, PendingQuestion, RunState } from './schema'
-import type { LogEntry } from './debug-log'
+import type { LogEntry, LogLevel } from './debug-log'
 import type { SearchSpec } from './search-url'
 
 /**
@@ -192,6 +192,17 @@ export type MessageMap = {
   'answers/resolve': { req: AnswerRequest; res: AnswerResponse }
   /** Progress ticks so the popup and overlay can show what's happening. */
   'run/progress': { req: { message: string }; res: Ack }
+  /**
+   * A line for the run log, from a content script.
+   *
+   * Content scripts cannot write `chrome.storage.session` themselves — its
+   * default access level is trusted contexts only — so every log line the
+   * worker produces comes through here.
+   */
+  'cs/log': {
+    req: { level: LogLevel; scope: string; message: string; detail?: string }
+    res: Ack
+  }
   /**
    * "I'm the frame that actually has the page's real content." Some sites —
    * LinkedIn's authenticated job search among them — render everything inside

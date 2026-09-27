@@ -4,7 +4,7 @@
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm test            # vitest run — 487 tests across 35 files
+npm test            # vitest run — 498 tests across 37 files
 npm run build       # tsc --noEmit && vite build
 ```
 
@@ -171,6 +171,33 @@ getting one wrong is how a run wanders somewhere it shouldn't.
    bar in the breakdown.
 5. Add French to **Profile → Languages** and re-score.
    **Verify:** that entry disappears and the requirements bar reads 100%.
+
+### 13b. A blocking question — the one that matters most
+
+1. Turn **Settings → Automation → Pause on questions I haven't answered** ON.
+2. Start a LinkedIn run with dry run ON, against a search whose postings ask
+   screening questions.
+3. When the run hits one it cannot answer:
+   - **Verify a chime plays** and a Chrome notification appears, even if you are
+     on another tab.
+   - **Verify the question is shown at the top of the side panel**, above the tabs,
+     with the job title and company.
+   - **Verify the run has stopped and stays stopped.** It must wait indefinitely.
+4. Type an answer, leave **Remember this answer** ticked, press **Save & continue**.
+   - **Verify the run resumes on the same job** rather than skipping it.
+5. Settings → **Answer bank**: **verify your answer is saved there**.
+6. Start another run that hits the same question.
+   - **Verify it does not stop this time** — the bank answers it.
+
+### 13c. KPIs and the worker log
+
+1. While a run is going, look at the side panel header.
+   **Verify** Applied / Skipped / Failed / Left update as it works.
+2. Open the **Logs** tab during the run.
+   **Verify** you can see each step: the job being opened, the modal opening, each
+   step's field count, each field's outcome, and which button it pressed.
+3. **Verify the privacy property:** the log shows field *labels* and outcomes, never
+   a value you or the AI typed into a box.
 
 ### 14. Regression check on existing features
 

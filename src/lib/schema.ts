@@ -131,7 +131,7 @@ export const searchFiltersSchema = z.object({
 })
 
 export const searchSpecSchema = z.object({
-  platform: z.enum(['linkedin', 'indeed']).default('indeed'),
+  platform: z.enum(['linkedin', 'indeed']).default('linkedin'),
   /** Free text, exactly as it goes into the board's own search box. */
   role: z.string().default(''),
   market: z.enum(['auto', 'fr', 'uk', 'us', 'ca', 'au', 'de', 'es']).default('auto'),

@@ -3,6 +3,7 @@ import { sendToBackground } from '@/lib/messaging'
 import { Button, cx } from '../components/ui'
 import { useRunState, useSettings } from '../hooks'
 import { AutoApplyTab } from './AutoApplyTab'
+import { PendingQuestionCard } from './PendingQuestion'
 import { LogsTab } from './LogsTab'
 import { ReviewTab } from './ReviewTab'
 
@@ -38,6 +39,32 @@ function statusOf(status: string | undefined): { dot: string; label: string } {
     default:
       return { dot: 'bg-zinc-400', label: 'Idle' }
   }
+}
+
+/** One number with its name under it. */
+function Kpi({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: number
+  tone: 'good' | 'bad' | 'muted'
+}) {
+  const tones = {
+    good: 'text-emerald-600 dark:text-emerald-400',
+    bad: 'text-red-600 dark:text-red-400',
+    muted: 'text-zinc-700 dark:text-zinc-300',
+  }
+
+  return (
+    <div className="rounded-md bg-zinc-100 px-1.5 py-1 text-center dark:bg-zinc-900">
+      <div className={cx('text-base font-semibold tabular-nums leading-none', tones[tone])}>
+        {value}
+      </div>
+      <div className="mt-0.5 text-[10px] uppercase tracking-wide text-zinc-500">{label}</div>
+    </div>
+  )
 }
 
 export function SidePanel() {
@@ -88,6 +115,20 @@ export function SidePanel() {
           </div>
         ) : null}
 
+        {/*
+          The counts, always visible rather than buried in a status sentence.
+          "3 applied, 1 failed" is the question anyone actually has while a run
+          is working, and it should not require reading prose to answer.
+        */}
+        {run && run.status !== 'idle' ? (
+          <div className="mx-3 mb-2 grid grid-cols-4 gap-1.5">
+            <Kpi label="Applied" value={run.applied} tone="good" />
+            <Kpi label="Skipped" value={run.skipped} tone="muted" />
+            <Kpi label="Failed" value={run.failed} tone="bad" />
+            <Kpi label="Left" value={Math.max(0, total - done)} tone="muted" />
+          </div>
+        ) : null}
+
         {run?.lastError ? (
           <p className="mx-3 mb-2 rounded-md bg-red-50 px-2 py-1.5 text-[11px] text-red-700 dark:bg-red-950 dark:text-red-300">
             {run.lastError}
@@ -112,6 +153,14 @@ export function SidePanel() {
           ))}
         </nav>
       </header>
+
+      {/*
+        Above the tab content on purpose: a run waits indefinitely for this,
+        so it must not be something the user can be on the wrong tab to see.
+      */}
+      {run?.status === 'blocked' && run.pendingQuestion ? (
+        <PendingQuestionCard question={run.pendingQuestion} sound />
+      ) : null}
 
       <main className="min-h-0 flex-1 overflow-y-auto">
         {tab === 'auto' ? (

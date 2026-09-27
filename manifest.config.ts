@@ -15,7 +15,11 @@ export default defineManifest({
   // beside the page. It grants no access to page content or user data — the
   // review flow simply cannot live in a popup, which closes the moment you
   // click the form you are trying to check.
-  permissions: ['storage', 'tabs', 'scripting', 'alarms', 'activeTab', 'sidePanel'],
+  // `notifications` is what makes "the run is waiting for you" reach someone
+  // who is not looking at the panel. A run blocks indefinitely on a question
+  // it cannot answer, so without this the queue can sit stalled for hours in
+  // a tab nobody has open.
+  permissions: ['storage', 'tabs', 'scripting', 'alarms', 'activeTab', 'sidePanel', 'notifications'],
   // `*.indeed.com` covers the country sites too — Indeed serves France as
   // fr.indeed.com and redirects indeed.fr to it — and, importantly,
   // smartapply.indeed.com, which is where the Apply button lands. A run can't
