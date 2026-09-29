@@ -38,6 +38,12 @@ export const BriefcaseIcon: IconComponent = (props) => (
   </Icon>
 )
 
+export const BoltIcon: IconComponent = (props) => (
+  <Icon {...props}>
+    <path d="M13 2.5 4.5 13.5H11l-1 8 8.5-11H12z" />
+  </Icon>
+)
+
 export const SparkIcon: IconComponent = (props) => (
   <Icon {...props}>
     <path d="M12 3.5 13.8 9l5.7 1.8-5.7 1.8L12 18.2l-1.8-5.6L4.5 10.8 10.2 9z" />

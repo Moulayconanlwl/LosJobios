@@ -107,6 +107,11 @@ export type MessageMap = {
    * that role; without one it uses whatever search the active tab is showing.
    */
   'run/start': { req: { spec?: SearchSpec }; res: Ack }
+  /**
+   * Apply to specific saved jobs, chosen in the dashboard, rather than
+   * whatever a search returns.
+   */
+  'run/apply-selected': { req: { ids: string[] }; res: Ack }
   /** The run log, for the Logs tab. */
   'run/log': { req: Record<string, never>; res: { entries: LogEntry[] } }
   'run/log-clear': { req: Record<string, never>; res: Ack }
@@ -152,7 +157,12 @@ export type MessageMap = {
   // ---- background → content --------------------------------------------
   'cs/ping': { req: Record<string, never>; res: { ready: true; site: string } }
   'cs/collect-jobs': {
-    req: { limit: number }
+    /**
+     * `withDescriptions` opens each result in the page's own details pane and
+     * reads the posting there. Slower, but it is the only place the body
+     * reliably renders — see the note on `jobRefSchema.description`.
+     */
+    req: { limit: number; withDescriptions?: boolean }
     res: { jobs: JobRef[]; emptyReason?: string }
   }
   'cs/apply-job': { req: { job: JobRef; dryRun: boolean }; res: ApplyOutcome }

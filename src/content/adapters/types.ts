@@ -32,8 +32,15 @@ export interface SiteAdapter {
   /** Does this adapter handle the current page? */
   matches(url: string): boolean
 
-  /** Scrape applyable jobs from a search/listing page. */
-  collectJobs(limit: number, ctx: ApplyContext): Promise<JobRef[]>
+  /**
+   * Scrape applyable jobs from a search/listing page.
+   *
+   * `withDescriptions` asks the adapter to also read each posting's body,
+   * which means bringing each one into the page's own details pane. Costly,
+   * and the only reliable way to get it: a posting opened in a background tab
+   * never renders its body at all.
+   */
+  collectJobs(limit: number, ctx: ApplyContext, withDescriptions?: boolean): Promise<JobRef[]>
 
   /**
    * Called when `collectJobs` came back empty, to say *why* — signed out,

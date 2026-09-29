@@ -3,10 +3,11 @@ import { APPLICATION_STATUSES, type Application, type ApplicationStatus } from '
 import { deleteApplication, updateApplication } from '@/lib/storage'
 import { AppShell, SidebarLink } from '../components/AppShell'
 import { Badge, type BadgeTone } from '../components/badge'
-import { BriefcaseIcon, HistoryIcon, SlidersIcon, SparkIcon } from '../components/icons'
+import { BoltIcon, BriefcaseIcon, HistoryIcon, SlidersIcon, SparkIcon } from '../components/icons'
 import { Button, Card, Input, Select, Stat, cx } from '../components/ui'
 import { useApplications, useSavedJobs } from '../hooks'
 import { ActivitySection } from './ActivitySection'
+import { AutoApplySection } from './AutoApplySection'
 import { JobsSection } from './JobsSection'
 import { downloadCsv } from './csv'
 
@@ -36,6 +37,7 @@ function relativeDate(timestamp: number): string {
 
 const NAV = [
   { id: 'applications', label: 'Applications', icon: BriefcaseIcon },
+  { id: 'auto-apply', label: 'Auto apply', icon: BoltIcon },
   { id: 'jobs', label: 'Jobs & materials', icon: SparkIcon },
   { id: 'activity', label: 'Activity', icon: HistoryIcon },
 ] as const
@@ -74,6 +76,7 @@ export function Dashboard() {
       }
     >
       {section === 'applications' ? <ApplicationsSection /> : null}
+      {section === 'auto-apply' ? <AutoApplySection /> : null}
       {section === 'jobs' ? <JobsSection /> : null}
       {section === 'activity' ? <ActivitySection /> : null}
     </AppShell>

@@ -1,12 +1,13 @@
 import { rememberUserAnswer } from '@/lib/answers'
 import { NoReceiverError, sendToTab, type Ack, type ApplyOutcome } from '@/lib/messaging'
-import type { Application, JobRef, RunState } from '@/lib/schema'
+import type { Application, JobRef, RunState, SavedJob } from '@/lib/schema'
 import {
   addApplication,
   addScrapedJobs,
   appliedExternalIds,
   logActivity,
   getRunState,
+  getSavedJobs,
   getSettings,
   patchRunState,
   setRunState,
@@ -219,6 +220,7 @@ export async function startRun(spec?: SearchSpec): Promise<Ack> {
         company: job.company,
         location: job.location,
         url: job.url,
+        description: job.description,
         source: board.id,
         savedAt: now,
       })),
@@ -260,6 +262,96 @@ export async function startRun(spec?: SearchSpec): Promise<Ack> {
     kind: 'run-started',
     summary: `Queued ${jobs.length} job${jobs.length === 1 ? '' : 's'} from a ${board.label} search.`,
     site: hostOf(boardUrl),
+  })
+
+  void ensureLoop()
+  return { ok: true }
+}
+
+
+/**
+ * Apply to postings the user picked in the dashboard.
+ *
+ * Different from a search run in one way that matters: these jobs are not all
+ * on one page, so there is no card to click. The loop navigates to each
+ * posting's own URL instead — see `mode` on the run state.
+ *
+ * The run gets its own tab. Taking over whatever the user happens to be
+ * reading is both startling and fragile, and a posting only renders properly
+ * in a tab that is actually visible, so a hidden one is not an option either.
+ */
+export async function startSelectedRun(ids: string[]): Promise<Ack> {
+  const existing = await getRunState()
+  if (existing.status === 'running') return { ok: false, error: 'A run is already in progress.' }
+  if (!ids.length) return { ok: false, error: 'Pick at least one job first.' }
+
+  const saved = await getSavedJobs()
+  const chosen = ids
+    .map((id) => saved.find((job) => job.id === id))
+    .filter((job): job is SavedJob => Boolean(job))
+
+  const applyable = chosen.filter((job) => job.url)
+  if (!applyable.length) {
+    return { ok: false, error: 'None of those jobs have a link to open.' }
+  }
+
+  const settings = await getSettings()
+  const fresh = await withFreshDailyCount({ ...defaultRunState(), ...existing })
+
+  const remaining = settings.dailyCap - fresh.dailyCount
+  if (remaining <= 0) {
+    return { ok: false, error: `Daily cap of ${settings.dailyCap} already reached.` }
+  }
+
+  const queue: JobRef[] = applyable.slice(0, remaining).map((job) => ({
+    externalId: job.externalId,
+    title: job.title,
+    company: job.company,
+    location: job.location,
+    url: job.url,
+    description: job.description,
+  }))
+
+  const board = detectJobBoard(queue[0]?.url)
+  if (!board) {
+    return { ok: false, error: 'Those jobs aren’t on a board this can drive.' }
+  }
+
+  void logInfo('run', `Applying to ${queue.length} selected job(s) on ${board.label}`)
+
+  let tabId: number | null = null
+  try {
+    const created = await chrome.tabs.create({ url: queue[0]?.url, active: true })
+    tabId = created.id ?? null
+  } catch (err) {
+    return { ok: false, error: `Could not open a tab for the run: ${describeError(err)}` }
+  }
+  if (tabId === null) return { ok: false, error: 'Could not open a tab for the run.' }
+
+  await waitForTabSettled(tabId, CONTINUATION_LOAD_MS)
+  if (!(await ensureContentScript(tabId))) {
+    return { ok: false, error: 'Could not reach the posting. Check you are signed in.' }
+  }
+
+  await setRunState({
+    ...defaultRunState(),
+    status: 'running',
+    tabId,
+    frameId: (await resolveContentFrame(tabId, 8000)) ?? null,
+    board: board.id,
+    mode: 'selected',
+    boardUrl: '',
+    queue,
+    startedAt: Date.now(),
+    countedOn: today(),
+    dailyCount: fresh.dailyCount,
+    lastMessage: `Applying to ${queue.length} job${queue.length === 1 ? '' : 's'}.`,
+  })
+
+  void logActivity({
+    kind: 'run-started',
+    summary: `Queued ${queue.length} job${queue.length === 1 ? '' : 's'} chosen from the dashboard.`,
+    site: hostOf(queue[0]?.url),
   })
 
   void ensureLoop()
@@ -383,10 +475,47 @@ async function runLoop(): Promise<void> {
       return
     }
 
+    // Captured once: the state is re-read below, which would otherwise widen
+    // this back to `number | null` after it has already been checked.
+    const tabId = state.tabId
+
+    /*
+     * In `selected` mode the queue came from the dashboard, so these postings
+     * are not all on one page and there is no card to click. Navigate to the
+     * posting itself before handing over to the adapter.
+     */
+    if (state.mode === 'selected') {
+      if (!job.url) {
+        await bumpCounter('skipped', 'That job has no link to open.')
+        await advanceCursor()
+        continue
+      }
+
+      try {
+        await chrome.tabs.update(tabId, { url: job.url })
+      } catch (err) {
+        await patchRunState({ status: 'paused', lastError: describeError(err) })
+        return
+      }
+
+      const landed = await waitForTabSettled(tabId, CONTINUATION_LOAD_MS)
+      if (!landed || !(await ensureContentScript(tabId))) {
+        await bumpCounter('failed', 'Could not open that posting.')
+        await advanceCursor()
+        continue
+      }
+
+      // A fresh page load means a fresh frame layout, so any earlier claim is
+      // stale. Let it re-run rather than addressing a frame that is gone.
+      await clearContentFrame(tabId)
+      await patchRunState({ frameId: (await resolveContentFrame(tabId, 6000)) ?? null })
+      state = await getRunState()
+    }
+
     // The previous job may have left the tab on a confirmation page. Get back
     // to the listing before trying to open anything from it.
     if (state.boardUrl) {
-      const returned = await returnToBoard(state.tabId, state.boardUrl)
+      const returned = await returnToBoard(tabId, state.boardUrl)
       if (!returned) {
         await patchRunState({
           status: 'paused',
@@ -401,7 +530,7 @@ async function runLoop(): Promise<void> {
       lastMessage: `Applying — ${job.title || 'job'} at ${job.company || 'company'}`,
     })
 
-    const advanced = await processJob(state.tabId, state.frameId, job, settings.dryRun)
+    const advanced = await processJob(tabId, state.frameId, job, settings.dryRun)
     if (!advanced) return // blocked or paused; state already reflects it
 
     state = await getRunState()
@@ -481,7 +610,27 @@ async function processJob(
       await advanceCursor()
       return true
 
-    case 'blocked':
+    case 'blocked': {
+      /*
+       * Nothing could answer a required question: not the answer bank, not
+       * the profile, not the AI reading the CV. Two honest responses, and the
+       * user picks which — but neither of them is to guess, because a wrong
+       * answer here goes to a real employer under their name.
+       */
+      const { onUnknownQuestion } = await getSettings()
+
+      if (onUnknownQuestion === 'skip') {
+        void logWarn(
+          'run',
+          `Skipped — nothing could answer a required question`,
+          outcome.question.question,
+        )
+        notifySkipped(outcome.question.question, job)
+        await bumpCounter('skipped', `Couldn’t answer: “${outcome.question.question}”`)
+        await advanceCursor()
+        return true
+      }
+
       // Deliberately does NOT advance the cursor — once answered, this same job
       // is retried from the top.
       void logWarn('run', 'Waiting for you to answer a question', outcome.question.question)
@@ -492,6 +641,7 @@ async function processJob(
       })
       notifyBlocked(outcome.question.question, job)
       return false
+    }
 
     case 'failed':
       await bumpCounter('failed', outcome.error)
@@ -676,19 +826,49 @@ function hostOf(url: string | null | undefined): string {
  * The question text is included because it is the employer's own wording, not
  * anything the user typed. Their *answer* never leaves the answer bank.
  */
+/**
+ * Tell the user a posting was skipped because nothing could answer it.
+ *
+ * Not silent, and not merely a log line: the whole point of `skip` mode is
+ * that the run keeps moving, so without a notification the user would only
+ * discover the gap by auditing the counts afterwards. The question is quoted
+ * because it is often worth adding to the answer bank by hand.
+ */
+function notifySkipped(question: string, job: JobRef): void {
+  notify('skipped', 'LosJobios skipped a job', question, job, false)
+}
+
 function notifyBlocked(question: string, job: JobRef): void {
+  // `sticky`: a blocked run waits indefinitely, so this notification has to
+  // survive being missed. A skip does not — the run has already moved on.
+  notify('blocked', 'LosJobios needs an answer', question, job, true)
+}
+
+/**
+ * One notification shape for both.
+ *
+ * The employer's own question text is included because it is theirs, not
+ * something the user typed. The user's *answers* never leave the answer bank.
+ */
+function notify(
+  kind: string,
+  title: string,
+  question: string,
+  job: JobRef,
+  sticky: boolean,
+): void {
   try {
-    chrome.notifications?.create(`losjobios-blocked-${Date.now()}`, {
+    chrome.notifications?.create(`losjobios-${kind}-${Date.now()}`, {
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-      title: 'LosJobios needs an answer',
+      title,
       message: question.slice(0, 180),
       contextMessage: [job.title, job.company].filter(Boolean).join(' — ').slice(0, 100),
       priority: 2,
-      requireInteraction: true,
+      requireInteraction: sticky,
     })
   } catch {
-    // Notifications are a courtesy; the panel still shows the question.
+    // Notifications are a courtesy; the panel and the log still have this.
   }
 }
 

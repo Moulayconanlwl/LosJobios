@@ -213,5 +213,26 @@ export function profileContext(profile: Profile): string {
 
   if (profile.summary) lines.push(`Summary: ${profile.summary}`)
 
+  /*
+   * The CV itself, last and longest.
+   *
+   * The structured fields above are a summary someone typed once; the resume
+   * is where the specifics live — the projects, the tools, the numbers. A
+   * screening question like "describe your experience with Splunk" is
+   * answerable from the CV and not from `skills: [...]`, so withholding it
+   * makes the model either vague or inventive, and only one of those is safe.
+   *
+   * Capped, because a long CV would otherwise crowd out the job description,
+   * and a good answer needs both.
+   */
+  const resumeText = profile.resume?.text?.trim()
+  if (resumeText) {
+    lines.push(
+      '',
+      'Resume (verbatim — use it for specifics, and never state anything it contradicts):',
+      resumeText.slice(0, 6000),
+    )
+  }
+
   return lines.join('\n')
 }

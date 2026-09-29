@@ -51,7 +51,7 @@ describe('GeminiProvider.generateCoverLetter', () => {
     const provider = new GeminiProvider('key', 'gemini-2.5-flash-lite')
     await provider.generateCoverLetter({
       profile: defaultProfile(),
-      job: { externalId: '1', title: 'Staff Engineer', company: 'Acme', location: '', url: '' },
+      job: { externalId: '1', title: 'Staff Engineer', company: 'Acme', location: '', url: '', description: '' },
       jobDescription: 'We need someone who loves distributed systems.',
     })
 

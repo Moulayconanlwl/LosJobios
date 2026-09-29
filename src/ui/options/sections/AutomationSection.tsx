@@ -38,6 +38,22 @@ export function AutomationSection({ draft }: { draft: Draft<Settings> }) {
             hint="Stops the run and asks you, rather than submitting a guess. Turning this off lets unanswered required fields fail silently."
             onChange={(v) => draft.update({ pauseOnUnknownRequired: v })}
           />
+          <Field
+            label="When nothing can answer a required question"
+            hint="After the answer bank, your profile and the AI reading your CV have all failed. Neither option ever guesses — a wrong answer here is sent to a real employer under your name."
+            className="max-w-sm"
+          >
+            <Select
+              value={settings.onUnknownQuestion}
+              onChange={(e) =>
+                draft.update({ onUnknownQuestion: e.target.value as Settings['onUnknownQuestion'] })
+              }
+            >
+              <option value="ask">Stop and ask me</option>
+              <option value="skip">Skip that job and notify me</option>
+            </Select>
+          </Field>
+
           <Toggle
             checked={settings.skipAlreadyApplied}
             label="Skip jobs I've already applied to"
