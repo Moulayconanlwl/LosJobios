@@ -297,6 +297,7 @@ export class IndeedAdapter implements SiteAdapter {
       company: company ? normalizeText(text(company)).slice(0, 200) : '',
       location: where ? normalizeText(text(where)).slice(0, 200) : '',
       url: `${location.origin}/viewjob?jk=${encodeURIComponent(externalId)}`,
+      description: '',
     }
   }
 
@@ -439,6 +440,7 @@ export class IndeedAdapter implements SiteAdapter {
       company: companyEl ? normalizeText(text(companyEl)).slice(0, 200) : '',
       location: whereEl ? normalizeText(text(whereEl)).slice(0, 200) : '',
       url: location.href,
+      description: '',
     }
   }
 

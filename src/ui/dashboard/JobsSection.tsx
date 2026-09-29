@@ -279,6 +279,7 @@ function JobDetail({
           company: job.company,
           location: job.location,
           url: job.url,
+          description: '',
         },
         jobDescription: job.description,
       })

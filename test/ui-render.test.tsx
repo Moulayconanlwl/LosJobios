@@ -124,9 +124,16 @@ describe('JobsSection', () => {
     render(<JobsSection />)
 
     await waitFor(() => expect(screen.getAllByText('Backend Engineer').length).toBeGreaterThan(0))
-    // The panel for the auto-selected job, with its tabs.
-    expect(screen.getByRole('button', { name: 'Cover letter' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy()
+
+    /*
+     * Awaited, not asserted synchronously. The list paints as soon as the
+     * jobs load, but the detail panel needs the effect that picks a default
+     * selection to have run and re-rendered — so there is a frame where the
+     * title is on screen and the panel is not. Asserting immediately made
+     * this fail roughly one run in four.
+     */
+    expect(await screen.findByRole('button', { name: 'Cover letter' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Resume' })).toBeTruthy()
   })
 
   it('tells you to fetch the description when a job was scraped from a list', async () => {

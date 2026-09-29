@@ -140,11 +140,11 @@ void claimFrameIfContent()
 registerHandlers({
   'cs/ping': () => ({ ready: true as const, site: adapter.id }),
 
-  'cs/collect-jobs': async ({ limit }) => {
+  'cs/collect-jobs': async ({ limit, withDescriptions }) => {
     resetController()
     const ctx = await buildContext(null, true)
     ctx.report('Scanning job list…')
-    const jobs = await adapter.collectJobs(limit, ctx)
+    const jobs = await adapter.collectJobs(limit, ctx, withDescriptions)
 
     if (jobs.length === 0) {
       const reason = adapter.diagnoseEmptyCollection?.()

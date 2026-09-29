@@ -137,7 +137,7 @@ export class LinkedInAdapter implements SiteAdapter {
   // Job list
   // -------------------------------------------------------------------------
 
-  async collectJobs(limit: number, ctx: ApplyContext): Promise<JobRef[]> {
+  async collectJobs(limit: number, ctx: ApplyContext, withDescriptions = false): Promise<JobRef[]> {
     csInfo('linkedin', `Scanning the job list (want up to ${limit})`)
 
     // The list virtualizes, so scroll it to materialize more cards than the
@@ -166,7 +166,66 @@ export class LinkedInAdapter implements SiteAdapter {
       `${jobs.length} job(s) passed the filters`,
       jobs.slice(0, 5).map((j) => `${j.title} — ${j.company}`).join(' | '),
     )
+
+    if (withDescriptions) await this.readDescriptions(jobs, ctx)
+
     return jobs
+  }
+
+  /**
+   * Fill in each job's description by opening it in the page's details pane.
+   *
+   * This is the only reliable place to read a posting. Opening one in a
+   * background tab gives you the top card, the site's own upsell and its
+   * footer — because a tab that is never visible never renders the body — so
+   * the text that came back was the page furniture rather than the job.
+   *
+   * Failures here are deliberately not fatal. A description is worth having
+   * but it is not worth losing the whole scrape over, so a posting whose pane
+   * never renders simply keeps an empty description and the scrape continues.
+   */
+  private async readDescriptions(jobs: JobRef[], ctx: ApplyContext): Promise<void> {
+    for (const [index, job] of jobs.entries()) {
+      if (ctx.signal.aborted) return
+
+      ctx.report(`Reading description ${index + 1} of ${jobs.length}…`)
+
+      try {
+        const card = this.findCard(job.externalId)
+        if (!card) {
+          csWarn('linkedin', 'Card gone before its description could be read', job.title)
+          continue
+        }
+
+        const clickable =
+          card.querySelector<HTMLElement>('a[href*="/jobs/view/"]') ??
+          card.querySelector<HTMLElement>('.job-card-list__title') ??
+          card
+
+        await humanClick(clickable, ctx.signal)
+
+        // Keyed on the text growing past a heading-sized stub, not merely on
+        // an element existing: the pane mounts empty and fills in.
+        const description = await waitFor(
+          () => {
+            const text = this.jobDescription()
+            return text.length > 200 ? text : null
+          },
+          { timeoutMs: 8000, intervalMs: 250, signal: ctx.signal },
+        )
+
+        if (description) {
+          job.description = description
+          csDebug('linkedin', `Read description for "${job.title}"`, `${description.length} chars`)
+        } else {
+          csWarn('linkedin', `No description rendered for "${job.title}"`)
+        }
+
+        await pause(ctx.settings.minActionDelayMs, ctx.settings.maxActionDelayMs, ctx.signal)
+      } catch (err) {
+        csWarn('linkedin', `Could not read a description`, err instanceof Error ? err.message : String(err))
+      }
+    }
   }
 
   /**
@@ -270,6 +329,7 @@ export class LinkedInAdapter implements SiteAdapter {
           company: paragraphs[1] ?? '',
           location: paragraphs[2] ?? '',
           url: `https://www.linkedin.com/jobs/view/${externalId}/`,
+          description: '',
         }
       }
     }
@@ -316,6 +376,7 @@ export class LinkedInAdapter implements SiteAdapter {
       company: companyEl ? dedupe(text(companyEl)) : '',
       location: locationEl ? dedupe(text(locationEl)) : '',
       url: `https://www.linkedin.com/jobs/view/${externalId}/`,
+      description: '',
     }
   }
 
@@ -375,6 +436,22 @@ export class LinkedInAdapter implements SiteAdapter {
    */
   async openJob(job: JobRef, ctx: ApplyContext): Promise<boolean> {
     csInfo('linkedin', `Opening: ${job.title || 'job'} — ${job.company || 'company'}`)
+
+    /*
+     * Already on the posting?
+     *
+     * A run started from the dashboard navigates straight to each job's own
+     * URL, so there is no card on the page to click — and without this the
+     * adapter would report the job as unopenable while it was on screen.
+     */
+    if (job.externalId && this.describeJob().externalId === job.externalId) {
+      const ready = await waitFor(() => this.findApplyButton(), {
+        timeoutMs: 10_000,
+        signal: ctx.signal,
+      })
+      csDebug('linkedin', 'Already on this posting', ready ? 'apply button found' : 'no apply button')
+      return Boolean(ready)
+    }
 
     const card = this.findCard(job.externalId)
     if (!card) {
@@ -470,6 +547,7 @@ export class LinkedInAdapter implements SiteAdapter {
       company: companyEl ? dedupe(text(companyEl)).slice(0, 200) : '',
       location: '',
       url: location.href,
+      description: '',
     }
   }
 

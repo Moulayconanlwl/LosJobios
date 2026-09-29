@@ -85,6 +85,7 @@ export class UniversalAdapter implements SiteAdapter {
       company: normalizeText(companyEl ? text(companyEl) : (ogSiteName ?? location.hostname)),
       location: '',
       url: location.href,
+      description: '',
     }
   }
 

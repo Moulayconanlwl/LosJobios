@@ -23,6 +23,7 @@ import {
   pauseRun,
   resumeRun,
   startRun,
+  startSelectedRun,
   stopRun,
   watchTabs,
 } from './session'
@@ -129,6 +130,7 @@ async function scrapeDescription(tabId: number, timeoutMs = 12_000): Promise<str
 
 registerHandlers({
   'run/start': ({ spec }) => startRun(spec),
+  'run/apply-selected': ({ ids }) => startSelectedRun(ids),
   'run/log': async () => ({ entries: await readLog() }),
   'run/log-clear': async () => {
     await clearLog()
@@ -316,7 +318,14 @@ registerHandlers({
     }
 
     const frameId = await resolveContentFrame(tab.id)
-    const { jobs, emptyReason } = await sendToTab(tab.id, 'cs/collect-jobs', { limit: 100 }, { frameId })
+    // Descriptions are read here, in the one place they actually render.
+    // Fetching them later from a background tab returns the page furniture.
+    const { jobs, emptyReason } = await sendToTab(
+      tab.id,
+      'cs/collect-jobs',
+      { limit: 100, withDescriptions: true },
+      { frameId },
+    )
 
     if (!jobs.length) {
       return { ok: false as const, error: emptyReason ?? 'No jobs found on this page.' }
@@ -332,6 +341,7 @@ registerHandlers({
         company: job.company,
         location: job.location,
         url: job.url,
+        description: job.description,
         source: detectJobBoard(tab.url)?.id ?? ('universal' as const),
         savedAt: now,
       })),

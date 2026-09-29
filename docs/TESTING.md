@@ -4,7 +4,7 @@
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm test            # vitest run — 504 tests across 38 files
+npm test            # vitest run — 514 tests across 39 files
 npm run build       # tsc --noEmit && vite build
 ```
 
@@ -199,7 +199,42 @@ getting one wrong is how a run wanders somewhere it shouldn't.
 3. **Verify the privacy property:** the log shows field *labels* and outcomes, never
    a value you or the AI typed into a box.
 
-### 13d. Fetching a description
+### 13d. Descriptions, captured during the scan
+
+Descriptions are now read *while scanning*, in the search page's own details
+pane — the one place a posting reliably renders. Reading one later from a
+background tab returns the site's furniture instead, which is what was going
+wrong.
+
+1. Side panel → **Scan this page for jobs** on a LinkedIn search.
+2. Watch the status line: it should count through "Reading description N of M".
+3. Dashboard → **Jobs & materials**. **Verify most rows say `description`**, not
+   `No Description`.
+4. Open one. **Verify it is the posting**, and that it does NOT contain
+   "Reactivate Premium", "LinkedIn Corporation" or the list of languages.
+5. Rescan the same search. **Verify rows that previously had none now have one** —
+   a rescan fills gaps rather than duplicating rows.
+
+### 13e. Applying to jobs you picked
+
+1. Dashboard → **Auto apply**.
+2. Tick a few postings, with dry run **ON**.
+3. Press **Apply to N selected jobs**.
+4. **Verify it opens its own tab** rather than taking over the one you were reading.
+5. **Verify it navigates to each posting in turn** and walks each application.
+6. **Verify it stops at Submit** without sending anything.
+
+### 13f. An unanswerable question skips instead of stalling
+
+1. Settings → Automation → **When nothing can answer a required question** →
+   *Skip that job and notify me*.
+2. Run against postings with unusual screening questions.
+3. **Verify** that when the answer bank, your profile and the AI reading your CV
+   all fail, you get a notification naming the question, the job is counted as
+   skipped, and the run **moves to the next job** rather than waiting.
+4. Switch back to *Stop and ask me* and confirm it waits again.
+
+### 13g. Fetching a description by hand
 
 1. Dashboard → **Jobs & materials** → pick a saved job with **No Description**.
 2. Press **Fetch description**.

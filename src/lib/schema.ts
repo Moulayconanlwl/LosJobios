@@ -162,6 +162,19 @@ export const settingsSchema = z.object({
 
   /** Stop and ask rather than submitting a required field we can't answer. */
   pauseOnUnknownRequired: z.boolean().default(true),
+  /**
+   * What to do when a required question defeats the answer bank, the profile
+   * heuristics and the AI.
+   *
+   * `ask` stops the run and waits for you — safest, but the queue goes nowhere
+   * until you come back. `skip` gives up on that one posting, tells you which
+   * and why, and moves to the next. Neither ever guesses: a wrong answer here
+   * is sent to a real employer under your name.
+   *
+   * Only consulted when `pauseOnUnknownRequired` is on; with it off, unanswered
+   * required fields are left empty as before.
+   */
+  onUnknownQuestion: z.enum(['ask', 'skip']).default('ask'),
   skipAlreadyApplied: z.boolean().default(true),
 
   titleIncludeKeywords: z.array(z.string()).default([]),
@@ -342,6 +355,16 @@ export const jobRefSchema = z.object({
   company: z.string().default(''),
   location: z.string().default(''),
   url: z.string().default(''),
+  /**
+   * The posting's text, when it was captured during the scrape.
+   *
+   * Captured there rather than fetched later because a posting only renders
+   * its body in a tab that is actually visible: opening one in a background
+   * tab yields the top card and the site's own furniture and nothing else.
+   * The search page already has the pane on screen, so reading it there is
+   * both more reliable and one pass instead of two.
+   */
+  description: z.string().default(''),
 })
 
 export type JobRef = z.infer<typeof jobRefSchema>
@@ -382,6 +405,15 @@ export const runStateSchema = z.object({
   frameId: z.number().nullable().default(null),
   /** Which job board this run is working through. */
   board: JOB_SOURCES.default('linkedin'),
+  /**
+   * How the queue was built.
+   *
+   * `search` walks a results page, so each job is opened by clicking its card.
+   * `selected` works through postings the user ticked in the dashboard, which
+   * are not on any one page — so the run navigates to each posting's own URL
+   * before applying.
+   */
+  mode: z.enum(['search', 'selected']).default('search'),
   /**
    * The search page the run started from.
    *
