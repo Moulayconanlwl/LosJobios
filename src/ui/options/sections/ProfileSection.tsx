@@ -457,7 +457,7 @@ export function ProfileSection({ draft }: { draft: Draft<Profile> }) {
 
       <Card
         title="Resume"
-        description="Upload a PDF, DOCX or text CV and the rest of this page fills itself in."
+        description="Upload a PDF, DOCX, LaTeX or text CV and the rest of this page fills itself in."
       >
         <div className="flex flex-col gap-3">
           {profile.resume?.fileName ? (
@@ -479,7 +479,7 @@ export function ProfileSection({ draft }: { draft: Draft<Profile> }) {
           <input
             ref={fileInput}
             type="file"
-            accept=".pdf,.doc,.docx,.txt,.md"
+            accept=".pdf,.doc,.docx,.txt,.md,.tex"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0]

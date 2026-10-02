@@ -58,8 +58,24 @@ export function extractDescription(useFallback: boolean): string {
     for (const selector of CHROME) {
       copy.querySelectorAll(selector).forEach((node) => node.remove())
     }
-    // textContent, not innerText: the clone is detached and so has no layout,
-    // and innerText returns '' without one.
+
+    /*
+     * Put a space back between block elements.
+     *
+     * `textContent` concatenates with no separator, so two adjacent blocks
+     * come out welded together — "Easy Apply" followed by "Business Analyst"
+     * became the single token `easyapplybusiness`, which then scored as a
+     * keyword. `innerText` would insert the breaks, but only for an element
+     * with layout, and this clone is detached precisely so the original page
+     * is not touched.
+     */
+    const document_ = copy.ownerDocument
+    for (const node of Array.from(
+      copy.querySelectorAll('p, div, li, br, tr, td, section, article, h1, h2, h3, h4, h5, h6'),
+    )) {
+      node.parentNode?.insertBefore(document_.createTextNode(' '), node)
+    }
+
     return clean(copy.textContent || '')
   }
 

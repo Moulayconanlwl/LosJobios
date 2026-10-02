@@ -125,3 +125,26 @@ describe('the last-resort fallback', () => {
     expect(text).not.toContain('LinkedIn Corporation')
   })
 })
+
+describe('adjacent blocks keep a space between them', () => {
+  it('does not weld two elements into one word', () => {
+    /*
+     * `textContent` concatenates with no separator, so "Easy Apply" followed
+     * by "Business Analyst" came out as the single token
+     * `easyapplybusiness` — which the ATS scorer then counted as a keyword.
+     */
+    document.body.innerHTML = `
+      <main>
+        <div id="job-details">
+          <div>Easy Apply</div><div>Business Analyst</div>
+          <p>${REAL_DESCRIPTION}</p>
+        </div>
+      </main>
+    `
+
+    const text = extractDescription(true)
+
+    expect(text).not.toMatch(/applybusiness/i)
+    expect(text).toContain('Easy Apply Business Analyst')
+  })
+})

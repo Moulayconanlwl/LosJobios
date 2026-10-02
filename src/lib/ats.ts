@@ -94,6 +94,97 @@ const WEIGHTS: Record<AtsComponentId, number> = {
   requirements: 10,
 }
 
+const words = (block: string): string[] => block.trim().split(/\s+/).filter(Boolean)
+
+/** Ordinary English, and the boilerplate every English posting is built from. */
+const ENGLISH_STOPWORDS = words(`
+  a about above across after again against all also am an and any are as at
+  be because been before being below between both but by
+  can could did do does doing down during
+  each either else etc even ever every
+  few for from further
+  had has have having he her here hers him his how however
+  i if in into is it its itself
+  just
+  may me might more most much must my
+  no nor not now
+  of off on once only or other others our ours out over own
+  per
+  same shall she should so some such
+  than that the their theirs them then there these they this those through to too
+  under until up upon us use used using
+  very
+  was we were what when where whether which while who whom why will with within without would
+  you your yours
+
+  ability able additional applicant apply applications background benefits bonus
+  candidate candidates career colleagues commitment community company compensation competitive culture curious
+  day days description desirable detail directly diverse diversity dynamic employee employer employment
+  environment equal exceptional excellent exciting experience experienced exposure expertise
+  familiar familiarity fast focus full future global good great group growing growth
+  help high highly hire hiring ideal impact including inclusive individual industry
+  join key knowledge level like looking love
+  make making member members mission months motivated
+  need needs new nice offer office opportunity organization
+  paced part partner passionate people plus position positions preferred prior professional proven provide
+  qualifications qualified quality
+  real really requirement requirements required responsibilities responsibility role roles
+  salary seeking self service services set skill skills someone strong successful
+  task tasks team teams technologies technology thrive time tools top track
+  understanding
+  value values various
+  want well work working world
+  year years
+`)
+
+/**
+ * French grammar words.
+ *
+ * Written unaccented because tokens are folded before they reach here — "à"
+ * is already "a", "être" already "etre".
+ *
+ * Without these, a French posting's heaviest "keywords" are its grammar: "et",
+ * "la", "de" and "des" outnumber every real term, and the phrase builder then
+ * emits "de projet" where the actual term is "projet".
+ */
+const FRENCH_STOPWORDS = words(`
+  a au aux avec ce ces cet cette chez dans de des du elle elles en et eux
+  il ils je la le les leur leurs lui ma mais me meme memes mes moi mon ne
+  nos notre nous on ou par pas plus pour qu que qui sa sans se ses si son
+  sur ta te tes toi ton tous tout toute toutes tu un une vos votre vous y
+  est sont etre ete avoir avons ont fait faire font plusieurs autre autres
+  afin ainsi alors apres aussi avant beaucoup bien comme donc dont encore
+  entre lors lorsque meilleur moins non pendant peut peuvent selon sous
+  tres via vers deja depuis
+`)
+
+/** The French counterpart of the English job-ad boilerplate above. */
+const FRENCH_BOILERPLATE = words(`
+  candidat candidats candidature candidatures capacite capacites
+  collaborateur collaborateurs competence competences connaissance
+  connaissances contexte contrat description entreprise environnement
+  equipe equipes experience experiences formation groupe maitrise mission
+  missions niveau offre opportunite poste postes profil profils qualites
+  recherche recherchons recrutement remuneration rejoindre role salaire
+  societe statut talent talents tache taches
+`)
+
+/**
+ * Job-board page furniture.
+ *
+ * These reach the scorer whenever a posting's text picks up the site's own
+ * chrome — "Easy Apply", "Over 100 applicants", "Reposted 3 hours ago". They
+ * appear in no job description, so matching on them scores every resume
+ * against every posting on that board identically.
+ */
+const BOARD_CHROME = words(`
+  ago applicants applied easy easily hirer promoted reposted viewed
+  hour hours minute minutes heure heures
+  actively reviewing recruiter responses response insights premium
+  reactivate unlock exclusive
+  linkedin indeed glassdoor
+`)
+
 /**
  * Words that carry no signal for keyword matching: ordinary English, plus the
  * boilerplate every job posting is built from. "Experience", "requirements"
@@ -103,47 +194,12 @@ const WEIGHTS: Record<AtsComponentId, number> = {
  * Genuine signal — a technology, a domain, a seniority-bearing job noun — is
  * deliberately absent from this list.
  */
-const STOPWORDS = new Set<string>(
-  `a about above across after again against all also am an and any are as at
-   be because been before being below between both but by
-   can could did do does doing down during
-   each either else etc even ever every
-   few for from further
-   had has have having he her here hers him his how however
-   i if in into is it its itself
-   just
-   may me might more most much must my
-   no nor not now
-   of off on once only or other others our ours out over own
-   per
-   same shall she should so some such
-   than that the their theirs them then there these they this those through to too
-   under until up upon us use used using
-   very
-   was we were what when where whether which while who whom why will with within without would
-   you your yours
-
-   ability able additional applicant apply applications background benefits bonus
-   candidate candidates career colleagues commitment community company compensation competitive culture curious
-   day days description desirable detail directly diverse diversity dynamic employee employer employment
-   environment equal exceptional excellent exciting experience experienced exposure expertise
-   familiar familiarity fast focus full future global good great group growing growth
-   help high highly hire hiring ideal impact including inclusive individual industry
-   join key knowledge level like looking love
-   make making member members mission months motivated
-   need needs new nice offer office opportunity organization
-   paced part partner passionate people plus position positions preferred prior professional proven provide
-   qualifications qualified quality
-   real really requirement requirements required responsibilities responsibility role roles
-   salary seeking self service services set skill skills someone strong successful
-   task tasks team teams technologies technology thrive time tools top track
-   understanding
-   value values various
-   want well work working world
-   year years`
-    .trim()
-    .split(/\s+/),
-)
+const STOPWORDS = new Set<string>([
+  ...ENGLISH_STOPWORDS,
+  ...FRENCH_STOPWORDS,
+  ...FRENCH_BOILERPLATE,
+  ...BOARD_CHROME,
+])
 
 /** Lines that state a requirement, where a term counts for more. */
 const EMPHASIS_RE =
@@ -175,12 +231,30 @@ const SECTION_PATTERNS = [
  * else.
  */
 function normalizeTokens(value: string): string[] {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9+#.\s]/g, ' ')
-    .split(/\s+/)
-    .map((token) => token.replace(/^\.+|\.+$/g, ''))
-    .filter(Boolean)
+  return (
+    value
+      .toLowerCase()
+      /*
+       * Fold accents to plain letters *before* anything is stripped.
+       *
+       * Without this, the character class below deletes every accented letter
+       * and splits the word around the hole: "systèmes" became "syst" and
+       * "mes", "expérience" became "exp" and "rience", "compétences" became
+       * "comp" and "tences". Those fragments then scored as keywords, so a
+       * French posting was matched on nonsense and the real terms were never
+       * seen at all.
+       *
+       * Folding rather than permitting accents also makes the two spellings
+       * one term, so a CV written "experience" matches a posting written
+       * "expérience" — which is the common case, not an edge one.
+       */
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9+#.\s]/g, ' ')
+      .split(/\s+/)
+      .map((token) => token.replace(/^\.+|\.+$/g, ''))
+      .filter(Boolean)
+  )
 }
 
 /**
@@ -822,9 +896,32 @@ export function scoreResumeAgainstJob(input: AtsInput): AtsScore {
     suggestions.push(...requirements.suggestions)
   }
 
-  const parseability = parseabilityComponent(input.resumeText)
-  components.push(parseability.component)
-  suggestions.push(...parseability.suggestions)
+  /*
+   * No document at all is a different thing from a badly-parsing one.
+   *
+   * Scoring "machine readability" against text that does not exist drags the
+   * whole number down for a reason the user cannot act on from the score
+   * itself — and it buries the keyword and title signal, which is computed
+   * from the stored profile and is perfectly real. A 5/100 that means "you
+   * have not uploaded a CV" reads as "you are a terrible match", and those
+   * call for opposite responses.
+   *
+   * So: say it once, loudly, and score the components that can actually be
+   * computed.
+   */
+  if (input.resumeText.trim().length < 50) {
+    suggestions.push({
+      id: 'no-resume',
+      severity: 'critical',
+      title: 'No CV text to score',
+      detail:
+        'There is no resume text stored, so only your profile could be scored. Applicant trackers read the document you upload, not a profile — upload a PDF or DOCX under Profile → Resume, or paste the text there, and score this again.',
+    })
+  } else {
+    const parseability = parseabilityComponent(input.resumeText)
+    components.push(parseability.component)
+    suggestions.push(...parseability.suggestions)
+  }
 
   if (easyWins.length) {
     suggestions.push({
