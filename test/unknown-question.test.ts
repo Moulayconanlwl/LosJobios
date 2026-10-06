@@ -47,13 +47,13 @@ describe('the AI answering from the CV', () => {
         fileName: 'cv.pdf',
         mimeType: 'application/pdf',
         dataBase64: '',
-        text: 'Designed and led Quality Tower, centralising 52 KPIs across 7 domains.',
+        text: 'Designed and led Signal Tower, centralising 52 KPIs across 7 domains.',
         sizeBytes: 1,
         updatedAt: 0,
       },
     })
 
-    expect(context).toContain('Quality Tower')
+    expect(context).toContain('Signal Tower')
     expect(context).toContain('52 KPIs')
   })
 

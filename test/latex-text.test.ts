@@ -16,7 +16,12 @@ import { defaultProfile } from '@/lib/schema'
  * along with the command deletes the one word that matters.
  */
 
-/** A real CV, trimmed — same structure, packages and macros. */
+/**
+ * A CV in the shape real ones take: the same packages, the same custom
+ * `\entry` macro, the same accented section headings. Fictional throughout —
+ * a fixture needs the structure, never a real person's employment history,
+ * and this repository is public.
+ */
 const CV = String.raw`\documentclass[11pt,a4paper]{article}
 \usepackage[margin=1.6cm]{geometry}
 \usepackage[french]{babel}
@@ -32,15 +37,15 @@ const CV = String.raw`\documentclass[11pt,a4paper]{article}
 \begin{document}
 
 \begin{center}
-{\Huge \textbf{Othmane El YATIMI}}\\[2pt]
-{\large Computer Engineer — MBA in Project Management}\\[4pt]
+{\Huge \textbf{Ada Lovelace}}\\[2pt]
+{\large Computer Engineer — MSc Distributed Systems}\\[4pt]
 Paris, France \quad $|$ \quad \faEnvelope\ \href{mailto:a@b.com}{a@b.com}
 \end{center}
 
 \section*{Expériences professionnelles}
-\entry{Proxy Product Owner / Tech Data \& AI Industrialization Consultant}{09/2025 – Present}{SCOR SE}{Paris}
+\entry{Staff Engineer / Data \& AI Consultant}{09/2025 – Present}{Acme Analytics}{Paris}
 \begin{itemize}[leftmargin=14pt]
-  \item Designed and led Quality Tower, a multi-domain monitoring platform centralizing 52 KPIs across 7 domains.
+  \item Designed and led Signal Tower, a multi-domain monitoring platform centralizing 52 KPIs across 7 domains.
 \end{itemize}
 
 \section*{Compétences}
@@ -52,15 +57,15 @@ describe('latexToText', () => {
   const text = latexToText(CV)
 
   it('keeps the words inside formatting commands', () => {
-    // The whole point. `\textbf{Othmane El YATIMI}` is a name, not markup.
-    expect(text).toContain('Othmane El YATIMI')
+    // The whole point. `\textbf{Ada Lovelace}` is a name, not markup.
+    expect(text).toContain('Ada Lovelace')
     expect(text).toContain('Computer Engineer')
   })
 
   it('keeps the content of a custom macro call', () => {
     // `\entry{…}{…}{…}{…}` is where every job title and employer lives.
-    expect(text).toContain('Proxy Product Owner')
-    expect(text).toContain('SCOR SE')
+    expect(text).toContain('Staff Engineer')
+    expect(text).toContain('Acme Analytics')
     expect(text).toContain('09/2025')
   })
 
@@ -71,7 +76,7 @@ describe('latexToText', () => {
   })
 
   it('keeps bullet text', () => {
-    expect(text).toContain('Quality Tower')
+    expect(text).toContain('Signal Tower')
     expect(text).toContain('52 KPIs')
   })
 
