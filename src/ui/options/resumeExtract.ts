@@ -2,6 +2,7 @@
 // code is loaded lazily below, so a page that never touches file upload never
 // pays for either library.
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { latexToText } from '@/lib/latex-text'
 import { reconstructLines, type PositionedTextItem } from '@/lib/pdf-text'
 import { htmlToTextWithLinks } from './htmlText'
 
@@ -92,6 +93,22 @@ export async function extractResumeText(file: File): Promise<ExtractedResume> {
       )
     }
 
+    /*
+     * A LaTeX CV. Common enough among engineers to be worth handling, and it
+     * used to be rejected outright — which left the profile with no resume
+     * text and collapsed the ATS score for a reason unrelated to the CV.
+     */
+    if (name.endsWith('.tex')) {
+      const text = latexToText(await file.text())
+      return text
+        ? { text }
+        : {
+            text: '',
+            warning:
+              'That .tex file had no readable text once the markup was stripped. Paste your resume as text below instead.',
+          }
+    }
+
     if (file.type.startsWith('text/') || TEXT_EXTENSIONS.some((ext) => name.endsWith(ext))) {
       return { text: (await file.text()).trim() }
     }
@@ -100,5 +117,5 @@ export async function extractResumeText(file: File): Promise<ExtractedResume> {
     throw new Error('Could not read that file.')
   }
 
-  throw new Error('Unsupported file type. Upload a PDF, DOCX, or plain-text resume.')
+  throw new Error('Unsupported file type. Upload a PDF, DOCX, LaTeX (.tex), or plain-text resume.')
 }

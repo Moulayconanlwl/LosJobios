@@ -254,8 +254,12 @@ describe('scoreResumeAgainstJob', () => {
   })
 
   it('flags a resume a parser would struggle with', () => {
+    // A document that exists but parses badly: no contact details, no section
+    // headings, no dates. Distinct from having no document at all, which is
+    // the case below.
     const result = scoreResumeAgainstJob({
-      resumeText: 'Ada Lovelace. Engineer.',
+      resumeText:
+        'Ada Lovelace, engineer. Built production services in Python and ran them on Kubernetes. Comfortable with PostgreSQL and Kafka, and happy owning things end to end.',
       profile: profileWith(),
       jobTitle: '',
       jobDescription: JOB,
@@ -264,6 +268,34 @@ describe('scoreResumeAgainstJob', () => {
     const parseability = result.components.find((entry) => entry.id === 'parseability')
     expect(parseability?.score).toBeLessThan(0.5)
     expect(result.notes.join(' ')).toContain('email')
+  })
+
+  it('says the CV is missing rather than scoring a document that does not exist', () => {
+    /*
+     * The reported failure: a profile with no stored resume text scored 5/100,
+     * because "machine readability" was being computed against an empty
+     * string and dragging everything down with it. That reads as "you are a
+     * terrible match" when it means "you have not uploaded a CV" — and those
+     * call for opposite responses.
+     */
+    const result = scoreResumeAgainstJob({
+      resumeText: '',
+      profile: profileWith({
+        yearsExperience: 6,
+        currentTitle: 'Senior Backend Engineer',
+        skills: ['Python', 'Kubernetes', 'Kafka', 'PostgreSQL', 'Docker'],
+      }),
+      jobTitle: 'Senior Backend Engineer',
+      jobDescription: JOB,
+    })
+
+    expect(result.suggestions.map((s) => s.id)).toContain('no-resume')
+    expect(result.components.map((c) => c.id)).not.toContain('parseability')
+
+    // The profile is real information, and a well-filled one still scores on
+    // its merits instead of being buried by a document that isn't there.
+    expect(result.matched).toContain('kubernetes')
+    expect(result.score).toBeGreaterThan(50)
   })
 
   it('never reports a score outside 0–100, even with nothing to go on', () => {

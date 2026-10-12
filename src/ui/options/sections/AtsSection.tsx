@@ -184,10 +184,30 @@ export function AtsSection() {
         title="ATS score"
         description="How a keyword-matching applicant tracking system would read your resume against one posting. Scored on this machine — no key needed."
       >
-        {!resumeText.trim() && (
+        {/*
+          Say plainly whether there is CV text and how much.
+          "No resume text to match" in the results is a symptom; the cause is
+          either no upload or an extraction that silently came back empty, and
+          only one of those is fixed by uploading again. A character count
+          tells the two apart at a glance.
+        */}
+        {resumeText.trim() ? (
+          <Banner tone="info">
+            Scoring against <strong>{profile.resume?.fileName || 'your stored CV text'}</strong> —{' '}
+            {resumeText.trim().length.toLocaleString()} characters of text.{' '}
+            {resumeText.trim().length < 300 ? (
+              <>
+                That is very little; the extraction may have failed. Check the text under{' '}
+                <strong>Profile → Resume</strong>.
+              </>
+            ) : null}
+          </Banner>
+        ) : (
           <Banner tone="warn">
-            There&rsquo;s no resume text to score yet. Upload a CV under <strong>Profile →
-            Resume</strong>, or paste the text there.
+            There&rsquo;s no resume text to score yet, so only your profile can be matched. Upload a
+            CV under <strong>Profile → Resume</strong> — and if you already did, open that section
+            and check the extracted text is there, because a PDF with no text layer extracts to
+            nothing.
           </Banner>
         )}
 
