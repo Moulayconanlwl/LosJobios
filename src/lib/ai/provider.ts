@@ -16,6 +16,21 @@ export type AnswerQuestionInput = {
   profile: Profile
   job: JobRef | null
   jobDescription: string
+  /**
+   * How this candidate answered similar questions before.
+   *
+   * The bank is consulted before the model and only reaches here when it had
+   * no answer close enough to use directly — but "not close enough to reuse"
+   * is still the best evidence available of how this person answers. Without
+   * it the model contradicts what the candidate has already told other
+   * employers, which is the kind of inconsistency a recruiter notices.
+   */
+  relatedAnswers?: Array<{ question: string; answer: string }>
+  /**
+   * The language of the form, when the page says. An English answer typed
+   * into a French application reads as a copy-paste from somewhere else.
+   */
+  language?: string
 }
 
 export type AnswerQuestionResult = {

@@ -1,10 +1,10 @@
-import { GeminiProvider, hasGeminiPermission } from './ai/gemini'
+import { getAiProvider } from './ai/select'
 import { AIProviderError, type AIProvider } from './ai/provider'
 import { CONFIDENCE_FLOOR, classifySignals, normalizeQuestion, valueForKey } from './fieldrules'
 import type { AnswerRequest, AnswerResponse } from './messaging'
 import { matchOption, sameSubject, similarity } from './optionmatch'
 import type { AnswerEntry, FieldKind } from './schema'
-import { getAnswers, getProfile, getSettings, patchSettings, putAnswer, touchAnswer } from './storage'
+import { getAnswers, getProfile, getSettings, putAnswer, touchAnswer } from './storage'
 
 /**
  * Resolving a screening question into an answer, in three tiers.
@@ -22,8 +22,25 @@ import { getAnswers, getProfile, getSettings, patchSettings, putAnswer, touchAns
 
 export { CONFIDENCE_FLOOR }
 
-/** Below this, two questions are treated as different questions. */
+/**
+ * Below this, two questions are treated as different questions.
+ *
+ * Only the fallback: the real value comes from settings, so it can be raised
+ * when the bank starts reusing answers too eagerly or lowered when it keeps
+ * asking the model things it already knows.
+ */
 const FUZZY_MATCH_FLOOR = 0.85
+
+/**
+ * Near-misses worth showing the model.
+ *
+ * Far enough below the reuse threshold not to be served directly, close
+ * enough to be about the same subject. These go into the AI prompt so a novel
+ * question is answered consistently with what the candidate has already told
+ * other employers.
+ */
+const RELATED_FLOOR = 0.45
+const MAX_RELATED = 5
 
 const NO_ANSWER: AnswerResponse = { answer: null, source: 'none', confidence: 0 }
 
@@ -48,6 +65,7 @@ function bankLookup(
   entries: AnswerEntry[],
   question: string,
   kind: FieldKind,
+  threshold: number = FUZZY_MATCH_FLOOR,
 ): { entry: AnswerEntry; confidence: number } | null {
   const normalized = normalizeQuestion(question)
   if (!normalized) return null
@@ -73,12 +91,38 @@ function bankLookup(
     }
   }
 
-  if (best && bestScore >= FUZZY_MATCH_FLOOR) {
+  if (best && bestScore >= threshold) {
     // A fuzzy hit is never as trustworthy as an exact one, so cap it below.
     return { entry: best, confidence: Math.min(bestScore, 0.95) }
   }
 
   return null
+}
+
+/**
+ * Bank entries that are about this question without being it.
+ *
+ * Subject-matched like the reuse path, so "years of Python" never pulls in
+ * the Java answer as context — the point is consistency, and inconsistent
+ * context is worse than none.
+ */
+function relatedAnswers(
+  entries: AnswerEntry[],
+  question: string,
+  kind: FieldKind,
+): Array<{ question: string; answer: string }> {
+  const normalized = normalizeQuestion(question)
+  if (!normalized) return []
+
+  const group = kindGroup(kind)
+
+  return entries
+    .filter((entry) => kindGroup(entry.kind) === group)
+    .map((entry) => ({ entry, score: sameSubject(entry.normalized, normalized) ? similarity(entry.normalized, normalized) : 0 }))
+    .filter((scored) => scored.score >= RELATED_FLOOR)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_RELATED)
+    .map(({ entry }) => ({ question: entry.question, answer: entry.answer }))
 }
 
 /**
@@ -102,27 +146,9 @@ function snapToOption(answer: string, options: string[]): string | null {
  * actually call. Returns null when AI is off, unconfigured, or unpermitted.
  */
 export async function getProvider(): Promise<AIProvider | null> {
-  const settings = await getSettings()
-  const { provider, apiKey, answerQuestions } = settings.ai
-
-  if (provider !== 'gemini' || !apiKey || !answerQuestions) return null
-  if (!(await hasGeminiPermission())) return null
-
-  let model = settings.ai.model
-  if (!model) {
-    // Never hardcode a model id — Gemini's lineup turns over and a stale id is
-    // a 404. Ask the key what it can call, take the best, and remember it.
-    try {
-      const models = await new GeminiProvider(apiKey, '').listModels()
-      model = models[0]?.id ?? ''
-      if (model) await patchSettings({ ai: { ...settings.ai, model } })
-    } catch (err) {
-      console.warn('[LosJobios] could not list Gemini models', err)
-      return null
-    }
-  }
-
-  return model ? new GeminiProvider(apiKey, model) : null
+  // A run putting model-written text into an employer's form is what the
+  // answerQuestions toggle governs, so this path respects it.
+  return getAiProvider({ requireAnswerQuestions: true })
 }
 
 // ---------------------------------------------------------------------------
@@ -171,9 +197,11 @@ export async function resolveAnswer(request: AnswerRequest): Promise<AnswerRespo
   const preview = classifySignals({ label: question, kind: request.kind })
   if (preview.key === 'coverLetter') return resolveCoverLetter(request)
 
+  const settings = await getSettings()
+
   // --- Tier 1: answer bank ------------------------------------------------
   const entries = await getAnswers()
-  const hit = bankLookup(entries, question, request.kind)
+  const hit = bankLookup(entries, question, request.kind, settings.ai.fuzzyThreshold)
   if (hit) {
     const snapped = snapToOption(hit.entry.answer, request.options)
     if (snapped !== null) {
@@ -200,6 +228,17 @@ export async function resolveAnswer(request: AnswerRequest): Promise<AnswerRespo
   const provider = await getProvider()
   if (!provider) return NO_ANSWER
 
+  /*
+   * A run asks the same question many times over — every posting wants the
+   * notice period — and each one is a paid round trip. The cache is scoped to
+   * the browser session, and keyed on everything that could change the right
+   * answer, so a different set of options or a different job is a different
+   * question.
+   */
+  const cacheKey = answerCacheKey(request)
+  const cached = await readCachedAnswer(cacheKey)
+  if (cached) return cached
+
   try {
     const result = await provider.answerQuestion({
       question,
@@ -208,39 +247,116 @@ export async function resolveAnswer(request: AnswerRequest): Promise<AnswerRespo
       profile,
       job: request.job,
       jobDescription: request.jobDescription,
+      relatedAnswers: relatedAnswers(entries, question, request.kind),
+      ...(request.language ? { language: request.language } : {}),
     })
 
     const snapped = snapToOption(result.answer, request.options)
-    if (snapped === null) {
-      // The model answered outside the allowed set — treat that as a miss
-      // rather than forcing a value the form would reject anyway.
+    if (snapped === null || !snapped.trim()) {
+      /*
+       * Either the model answered outside the allowed set, or it declined
+       * because the information was not there. Both are a miss: the field is
+       * left for review rather than filled with something the form would
+       * reject or the candidate would have to disown.
+       */
       return NO_ANSWER
     }
 
-    // Remember it, unconfirmed, so the same question is free next time and you
-    // can review what the model decided on your behalf.
-    await putAnswer({
-      id: crypto.randomUUID(),
-      question,
-      normalized: normalizeQuestion(question),
-      kind: request.kind,
-      answer: snapped,
-      options: request.options,
-      source: 'ai',
-      confirmed: false,
-      useCount: 1,
-      createdAt: Date.now(),
-      lastUsedAt: Date.now(),
-    })
+    const answer: AnswerResponse = { answer: snapped, source: 'ai', confidence: result.confidence }
+    await writeCachedAnswer(cacheKey, answer)
 
-    return { answer: snapped, source: 'ai', confidence: result.confidence }
+    /*
+     * Writing into the bank is opt-in, and off by default.
+     *
+     * The bank is what the extension reuses *without asking* next time, so
+     * promoting an unreviewed guess into it turns one wrong answer into every
+     * future wrong answer. Caching above gets the cost saving within a
+     * session without that risk.
+     */
+    if (settings.ai.autoSaveAiAnswers) {
+      await putAnswer({
+        id: crypto.randomUUID(),
+        question,
+        normalized: normalizeQuestion(question),
+        kind: request.kind,
+        answer: snapped,
+        options: request.options,
+        source: 'ai',
+        confirmed: false,
+        useCount: 1,
+        createdAt: Date.now(),
+        lastUsedAt: Date.now(),
+      })
+    }
+
+    return answer
   } catch (err) {
+    // Every failure ends the same way: the field is handed back to the user.
+    // Saying which failure it was is the only thing that varies.
     if (err instanceof AIProviderError && err.isRateLimit) {
-      console.warn('[LosJobios] Gemini rate limited; falling back to asking you.')
+      console.warn('[LosJobios] model rate limited; leaving this field for review.')
     } else {
       console.warn('[LosJobios] AI answer failed', err)
     }
     return NO_ANSWER
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Session cache
+// ---------------------------------------------------------------------------
+
+const CACHE_KEY = 'answerCache'
+const MAX_CACHED = 300
+
+/** Everything that could change the right answer goes into the key. */
+function answerCacheKey(request: AnswerRequest): string {
+  return [
+    normalizeQuestion(request.question),
+    request.kind,
+    request.options.join(''),
+    request.job?.externalId ?? '',
+    request.language ?? '',
+  ].join(' ')
+}
+
+async function readCachedAnswer(key: string): Promise<AnswerResponse | null> {
+  try {
+    const store = await chrome.storage.session.get(CACHE_KEY)
+    const map = store[CACHE_KEY] as Record<string, AnswerResponse> | undefined
+    return map?.[key] ?? null
+  } catch {
+    // No session storage is not a reason to fail a fill.
+    return null
+  }
+}
+
+async function writeCachedAnswer(key: string, value: AnswerResponse): Promise<void> {
+  try {
+    const store = await chrome.storage.session.get(CACHE_KEY)
+    const map = (store[CACHE_KEY] as Record<string, AnswerResponse> | undefined) ?? {}
+
+    map[key] = value
+
+    // Bounded: a long run against a verbose board would otherwise grow this
+    // without limit. Oldest insertions fall off first.
+    const keys = Object.keys(map)
+    if (keys.length > MAX_CACHED) {
+      for (const stale of keys.slice(0, keys.length - MAX_CACHED)) delete map[stale]
+    }
+
+    await chrome.storage.session.set({ [CACHE_KEY]: map })
+  } catch {
+    // Caching is an optimisation; never let it fail the answer.
+  }
+}
+
+/** Drop the cached answers, e.g. after editing the profile. */
+export async function clearAnswerCache(): Promise<void> {
+  try {
+    await chrome.storage.session.remove(CACHE_KEY)
+  } catch {
+    // Nothing to do.
   }
 }
 

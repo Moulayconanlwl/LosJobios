@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { Profile } from '@/lib/schema'
-import { GeminiProvider, hasGeminiPermission } from '@/lib/ai/gemini'
+import { getAiProvider } from '@/lib/ai/select'
 import type { ParsedResume } from '@/lib/ai/provider'
 import { assessProfile } from '@/lib/profile-health'
 import { heuristicParseResume, mergeParsedResume, preferParsed } from '@/lib/resume-heuristics'
@@ -17,7 +17,6 @@ import {
   cx,
 } from '../../components/ui'
 import type { Draft } from '../../hooks'
-import { useSettings } from '../../hooks'
 import { extractResumeText } from '../resumeExtract'
 
 /** 2 MB — comfortably above any real resume, and well inside the storage quota. */
@@ -103,7 +102,6 @@ function fileToBase64(file: File): Promise<string> {
 
 export function ProfileSection({ draft }: { draft: Draft<Profile> }) {
   const profile = draft.value
-  const { data: settings } = useSettings()
   const fileInput = useRef<HTMLInputElement>(null)
   const [fileError, setFileError] = useState('')
   const [extractWarning, setExtractWarning] = useState('')
@@ -140,11 +138,12 @@ export function ProfileSection({ draft }: { draft: Draft<Profile> }) {
     try {
       let parsed: ParsedResume = heuristicParseResume(text)
 
-      if (settings?.ai.apiKey && settings.ai.model && (await hasGeminiPermission())) {
+      // Heuristics already produced a result above; a provider only improves
+      // it, so an unconfigured one is not an error here.
+      const provider = await getAiProvider()
+      if (provider) {
         try {
-          const ai = await new GeminiProvider(settings.ai.apiKey, settings.ai.model).parseResume(
-            text,
-          )
+          const ai = await provider.parseResume(text)
           parsed = preferParsed(parsed, ai)
           setUsedAi(true)
         } catch (err) {
@@ -219,10 +218,8 @@ export function ProfileSection({ draft }: { draft: Draft<Profile> }) {
     setCoverLetterError('')
 
     try {
-      if (!settings?.ai.apiKey || !settings.ai.model || !(await hasGeminiPermission())) {
-        throw new Error('Set up a Gemini key under Settings → AI first.')
-      }
-      const provider = new GeminiProvider(settings.ai.apiKey, settings.ai.model)
+      const provider = await getAiProvider()
+      if (!provider) throw new Error('Set up an AI provider under Settings → AI first, and press Test connection there.')
       const { text } = await provider.generateCoverLetter({ profile, job: null, jobDescription: '' })
       setCoverLetterPreview(text)
       setCoverLetterStatus('idle')

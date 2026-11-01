@@ -47,6 +47,14 @@ export type AnswerRequest = {
   job: JobRef | null
   /** Job description text scraped from the page, used as AI context. */
   jobDescription: string
+  /**
+   * The language of the form, as a BCP-47 tag the page declared.
+   *
+   * An English answer typed into a French application reads as a copy-paste
+   * from another application, which is exactly the impression bulk applying
+   * has to avoid.
+   */
+  language?: string
 }
 
 export type AnswerResponse = {

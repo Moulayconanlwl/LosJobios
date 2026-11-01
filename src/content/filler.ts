@@ -1,5 +1,6 @@
 import { sendToBackground } from '@/lib/messaging'
 import { csDebug } from './log'
+import { documentLanguage } from './dom/keywords'
 import type { AnswerResponse } from '@/lib/messaging'
 import { CONFIDENCE_FLOOR, valueForKey } from '@/lib/fieldrules'
 import {
@@ -100,6 +101,9 @@ export async function resolveFieldValue(
     required: field.required,
     job: ctx.job,
     jobDescription: ctx.jobDescription,
+    // So a French form gets a French answer. Read from the page's own `lang`
+    // rather than guessed from its text.
+    language: documentLanguage(),
   })
 
   return {

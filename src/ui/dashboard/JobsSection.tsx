@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { GeminiProvider, hasGeminiPermission } from '@/lib/ai/gemini'
+import { getAiProvider } from '@/lib/ai/select'
+import type { AIProvider } from '@/lib/ai/provider'
+
+/** One wording for the one thing that has to be set up. */
+const NEED_PROVIDER =
+  'Set up an AI provider under Settings → AI first, and press Test connection there.'
 import { scoreResumeAgainstJob, type AtsScore } from '@/lib/ats'
 import { coverLetterToLatex, resumeToLatex, slug } from '@/lib/latex'
 import { sendToBackground } from '@/lib/messaging'
@@ -31,11 +36,15 @@ function timeAgo(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString()
 }
 
-async function buildProvider(settings: Settings | null): Promise<GeminiProvider> {
-  if (!settings?.ai.apiKey || !settings.ai.model || !(await hasGeminiPermission())) {
-    throw new Error('Set up a Gemini key under Settings → AI first.')
-  }
-  return new GeminiProvider(settings.ai.apiKey, settings.ai.model)
+/**
+ * Whichever provider is configured — Anthropic, OpenAI, a compatible
+ * endpoint or Gemini. `settings` is no longer read here: every caller used to
+ * build Gemini from a single stored key, and that is now one of several.
+ */
+async function buildProvider(_settings: Settings | null): Promise<AIProvider> {
+  const provider = await getAiProvider()
+  if (!provider) throw new Error(NEED_PROVIDER)
+  return provider
 }
 
 function download(name: string, body: string) {

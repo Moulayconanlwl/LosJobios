@@ -333,12 +333,28 @@ export function classifySignals({
 
 /** Canonical form used as the answer-bank lookup key. */
 export function normalizeQuestion(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[‘’]/g, "'")
-    .replace(/[^a-z0-9'\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  return (
+    value
+      .toLowerCase()
+      .replace(/[‘’]/g, "'")
+      /*
+       * Fold accents, then keep every letter in any script.
+       *
+       * This used to be `[^a-z0-9'\s]`, which deleted the accented half of
+       * every French question — "expérience" and "experience" became
+       * different questions — and erased Arabic, Chinese, Japanese, Korean
+       * and Cyrillic entirely, normalising those to the empty string. An
+       * empty normalised form matches nothing and is stored as nothing, so
+       * the answer bank simply did not work outside English.
+       */
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      // Directional and zero-width marks, invisible but not equal.
+      .replace(/[​-‏‪-‮⁦-⁩﻿]/gu, '')
+      .replace(/[^\p{L}\p{N}'\s]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  )
 }
 
 /**

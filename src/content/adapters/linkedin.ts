@@ -22,6 +22,7 @@ import {
 } from '../dialog-guard'
 import { csDebug, csError, csInfo, csWarn } from '../log'
 import { checkPageHealth } from './linkedin-health'
+import { classifyButton, type ButtonIntent } from '../dom/keywords'
 import type { ApplyContext, SiteAdapter } from './types'
 
 /**
@@ -757,26 +758,43 @@ export class LinkedInAdapter implements SiteAdapter {
   }
 
   /** Which footer button moves us forward. Submit wins, then Review, then Next. */
+  /**
+   * Which footer button advances the modal.
+   *
+   * Classified through the shared multilingual dictionary rather than a list
+   * of English strings, so this works on an account set to any of the
+   * thirteen languages in `dom/keywords.ts`. LinkedIn renders its UI in the
+   * account's language, so an English-only match silently breaks the entire
+   * flow for everyone else.
+   *
+   * Submit is decided last among the advancing intents and only on a button
+   * whose label actually says so. A button that cannot be read is reported as
+   * nothing, which stops the run — the opposite mistake clicks Submit.
+   */
   private nextAction(modal: HTMLElement): StepAction {
     const footer =
       modal.querySelector<HTMLElement>('footer') ??
       modal.querySelector<HTMLElement>('.artdeco-modal__actionbar') ??
       modal
 
-    const submit =
-      pick(['button[aria-label*="Submit application" i]'], footer) ??
-      findByText(TEXT.submit, ['button'], footer)
-    if (submit) return { kind: 'submit', button: submit }
+    const buttons = pickAll(['button', '[role="button"]'], footer, isDisplayed).filter(
+      (el) => !(el as HTMLButtonElement).disabled,
+    )
 
-    const review =
-      pick(['button[aria-label*="Review" i]'], footer) ??
-      findByText(['review your application', 'review'], ['button'], footer)
+    const byIntent = (intent: ButtonIntent) =>
+      buttons.find((button) => classifyButton(button) === intent)
+
+    // Review before continue before submit: a step that offers both Review
+    // and Submit is not the last one, and clicking Submit there skips the
+    // review the user asked for.
+    const review = byIntent('review')
     if (review) return { kind: 'review', button: review }
 
-    const next =
-      pick(['button[aria-label*="Continue to next step" i]', 'button[aria-label*="Next" i]'], footer) ??
-      findByText(['continue to next step', 'next', 'continue'], ['button'], footer)
+    const next = byIntent('continue')
     if (next) return { kind: 'next', button: next }
+
+    const submit = byIntent('submit')
+    if (submit) return { kind: 'submit', button: submit }
 
     return { kind: 'none' }
   }

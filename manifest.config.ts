@@ -27,9 +27,23 @@ export default defineManifest({
   // because the form is a separate page load rather than a modal.
   host_permissions: ['https://www.linkedin.com/*', 'https://*.indeed.com/*'],
 
-  // Requested at runtime only when you turn on AI question answering, so the
-  // extension has no network reach at all until you opt in.
-  optional_host_permissions: ['https://generativelanguage.googleapis.com/*'],
+  /*
+   * Model endpoints, every one optional and requested at runtime.
+   *
+   * The extension has no network reach at all until a provider is configured
+   * and its host is granted. The named three cover the built-in vendors;
+   * `https://*` is what makes "OpenAI-compatible (custom URL)" possible at
+   * all, since OpenRouter, Groq, Together and a self-hosted vLLM cannot be
+   * enumerated in advance. It is *optional*: Chrome grants it per-origin when
+   * you press Test connection on a custom provider, never at install, and the
+   * install prompt does not mention it.
+   */
+  optional_host_permissions: [
+    'https://generativelanguage.googleapis.com/*',
+    'https://api.anthropic.com/*',
+    'https://api.openai.com/*',
+    'https://*/*',
+  ],
 
   action: {
     // No `default_popup` on purpose. With none set, Chrome lets the extension

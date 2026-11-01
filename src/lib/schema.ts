@@ -103,12 +103,70 @@ export type ResumeFile = z.infer<typeof resumeFileSchema>
 // Settings
 // ---------------------------------------------------------------------------
 
+export const PROVIDER_TYPES = ['anthropic', 'openai', 'openai-compatible', 'gemini'] as const
+
+/**
+ * One configured model endpoint.
+ *
+ * `model` is free text on purpose. Every vendor's lineup turns over faster
+ * than this extension ships, and a dropdown built from a baked-in list
+ * becomes a wall of 404s — the Test connection button is what tells you a
+ * name is good, not a hardcoded enum.
+ */
+export const aiProviderConfigSchema = z.object({
+  id: z.string(),
+  /** The user's own label, so two keys for one vendor are tellable apart. */
+  name: z.string().default(''),
+  type: z.enum(PROVIDER_TYPES).default('openai'),
+  /**
+   * Stored in chrome.storage.local, which is this machine only and never
+   * synced. Never logged, and never included in a backup export.
+   */
+  apiKey: z.string().default(''),
+  model: z.string().default(''),
+  /** Blank means the vendor's own default; required for openai-compatible. */
+  baseUrl: z.string().default(''),
+  temperature: z.number().min(0).max(2).default(0.2),
+  maxTokens: z.number().min(1).max(32_000).default(2048),
+})
+
+export type AiProviderConfig = z.infer<typeof aiProviderConfigSchema>
+
 export const aiSettingsSchema = z.object({
+  /**
+   * Kept from the single-provider era so existing settings still parse and
+   * keep working. `providers` below is where new configuration goes; these
+   * are migrated into it on first read and then left alone.
+   */
   provider: z.enum(['gemini', 'none']).default('gemini'),
   apiKey: z.string().default(''),
   model: z.string().default(''),
   /** Let the AI answer screening questions the bank and heuristics can't. */
   answerQuestions: z.boolean().default(true),
+
+  providers: z.array(aiProviderConfigSchema).default([]),
+  /** Which configured provider to use. Empty falls back to the first. */
+  defaultProviderId: z.string().default(''),
+
+  /**
+   * How close a stored question has to be to count as the same question.
+   * Below this the AI is asked instead. Raising it makes the bank pickier.
+   */
+  fuzzyThreshold: z.number().min(0.5).max(1).default(0.85),
+
+  /**
+   * Write AI answers into the answer bank automatically.
+   *
+   * Off by default and deliberately so: the bank is what the extension
+   * trusts without asking next time, and promoting an unreviewed guess into
+   * it turns one wrong answer into every future wrong answer.
+   */
+  autoSaveAiAnswers: z.boolean().default(false),
+
+  /** Give up on a single model call after this long. */
+  timeoutMs: z.number().min(2000).max(120_000).default(30_000),
+  /** Retries after a timeout or a 5xx. Never retried on a bad key. */
+  retries: z.number().min(0).max(3).default(1),
 })
 
 /**

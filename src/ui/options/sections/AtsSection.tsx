@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { GeminiProvider, hasGeminiPermission } from '@/lib/ai/gemini'
+import { getAiProvider } from '@/lib/ai/select'
 import type { ResumeReview } from '@/lib/ai/provider'
 import { scoreResumeAgainstJob, type AtsScore, type AtsSeverity, type AtsSuggestion } from '@/lib/ats'
 import { getCapturedJob } from '@/lib/storage'
@@ -146,7 +146,8 @@ export function AtsSection() {
 
   const resumeText = profile.resume?.text ?? ''
   const canScore = jobDescription.trim().length > 0
-  const aiConfigured = Boolean(settings?.ai.apiKey && settings.ai.model)
+  // A provider is configured when one is in the list with a model on it.
+  const aiConfigured = (settings?.ai.providers ?? []).some((p) => p.model.trim())
 
   const runScore = () => {
     setReview(null)
@@ -158,10 +159,10 @@ export function AtsSection() {
     setReviewing(true)
     setReviewError('')
     try {
-      if (!settings?.ai.apiKey || !settings.ai.model || !(await hasGeminiPermission())) {
-        throw new Error('Set up a Gemini key under Settings → AI first.')
+      const provider = await getAiProvider()
+      if (!provider) {
+        throw new Error('"+NEED+"')
       }
-      const provider = new GeminiProvider(settings.ai.apiKey, settings.ai.model)
       setReview(
         await provider.reviewResume({
           resumeText,
