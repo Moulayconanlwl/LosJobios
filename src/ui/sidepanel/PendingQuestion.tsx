@@ -94,24 +94,24 @@ export function PendingQuestionCard({ question, sound }: Props) {
   }
 
   return (
-    <div className="m-3 rounded-xl border-2 border-amber-400 bg-amber-50 p-3 dark:border-amber-600 dark:bg-amber-950">
+    <div className="m-3 rounded-[var(--radius-card)] border-2 border-warn bg-warn-wash p-3">
       <div className="flex items-center gap-2">
         <span className="relative flex h-2.5 w-2.5">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warn opacity-75" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-warn" />
         </span>
-        <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200">
+        <p className="text-xs font-semibold uppercase tracking-wide text-warn">
           Waiting for you
         </p>
       </div>
 
       {question.jobTitle || question.company ? (
-        <p className="mt-1.5 text-[11px] text-amber-800 dark:text-amber-300">
+        <p className="mt-1.5 text-[11px] text-warn">
           {[question.jobTitle, question.company].filter(Boolean).join(' — ')}
         </p>
       ) : null}
 
-      <p className="mt-2 text-sm font-medium text-amber-950 dark:text-amber-100">
+      <p className="mt-2 text-sm font-medium text-warn">
         {question.question}
       </p>
 
@@ -138,7 +138,7 @@ export function PendingQuestionCard({ question, sound }: Props) {
         )}
       </div>
 
-      <label className="mt-2 flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200">
+      <label className="mt-2 flex items-start gap-2 text-xs text-warn">
         <input
           type="checkbox"
           className="mt-0.5 rounded"
@@ -154,7 +154,7 @@ export function PendingQuestionCard({ question, sound }: Props) {
       </label>
 
       {error ? (
-        <p className="mt-2 text-xs text-red-700 dark:text-red-300">{error}</p>
+        <p className="mt-2 text-xs text-bad">{error}</p>
       ) : null}
 
       <Button

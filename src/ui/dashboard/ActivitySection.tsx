@@ -71,23 +71,23 @@ export function ActivitySection() {
         </Banner>
 
         {entries.length === 0 ? (
-          <p className="py-10 text-center text-xs text-zinc-500">
+          <p className="py-10 text-center text-xs text-muted">
             Nothing recorded yet. Start a run or fill a form and it will show up here.
           </p>
         ) : (
-          <ul className="mt-4 divide-y divide-zinc-200 dark:divide-zinc-800">
+          <ul className="mt-4 divide-y divide-hair">
             {entries.map((entry) => (
               <li key={entry.id} className="flex items-start gap-3 py-2.5">
                 <Badge tone={TONES[entry.kind] ?? 'neutral'}>{label(entry.kind)}</Badge>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs text-zinc-800 dark:text-zinc-200">{entry.summary}</p>
+                  <p className="text-xs text-ink">{entry.summary}</p>
                   {entry.jobTitle || entry.company || entry.site ? (
-                    <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+                    <p className="mt-0.5 truncate text-[11px] text-muted">
                       {[entry.jobTitle, entry.company, entry.site].filter(Boolean).join(' · ')}
                     </p>
                   ) : null}
                 </div>
-                <span className="flex-none text-[11px] text-zinc-400">{when(entry.at)}</span>
+                <span className="flex-none text-[11px] text-faint">{when(entry.at)}</span>
               </li>
             ))}
           </ul>

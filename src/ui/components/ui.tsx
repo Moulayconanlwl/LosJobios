@@ -25,13 +25,19 @@ type ButtonProps = {
   title?: string
 }
 
+/*
+ * One orange, and only for the primary action.
+ *
+ * DESIGN.md is explicit that the accent is the single chromatic decision in
+ * the system, so secondary and ghost stay achromatic and `danger` borrows a
+ * status colour rather than introducing a second brand one.
+ */
 const BUTTON_VARIANTS: Record<NonNullable<ButtonProps['variant']>, string> = {
-  primary: 'bg-indigo-600 text-white hover:bg-indigo-500 disabled:hover:bg-indigo-600',
-  secondary:
-    'bg-white text-zinc-800 border border-zinc-300 hover:bg-zinc-50 dark:bg-zinc-800 dark:text-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-700',
-  danger:
-    'bg-white text-red-600 border border-red-300 hover:bg-red-50 dark:bg-zinc-800 dark:text-red-400 dark:border-red-900 dark:hover:bg-red-950',
-  ghost: 'text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800',
+  primary:
+    'bg-accent text-accent-ink shadow-[var(--shadow-control)] hover:brightness-90 disabled:hover:brightness-100',
+  secondary: 'bg-surface text-ink border border-field hover:bg-raised',
+  danger: 'bg-surface text-bad border border-bad/40 hover:bg-bad-wash',
+  ghost: 'text-muted hover:bg-accent-wash/60 hover:text-ink',
 }
 
 export function Button({
@@ -51,9 +57,10 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       className={cx(
-        'inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-colors',
+        // 16px radius is the system's tactile signature, per DESIGN.md.
+        'inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-control)] font-semibold transition-all',
         'disabled:cursor-not-allowed disabled:opacity-50',
-        size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3.5 py-2 text-sm',
+        size === 'sm' ? 'px-3 py-1.5 text-xs' : 'px-5 py-2.5 text-sm',
         BUTTON_VARIANTS[variant],
         className,
       )}
@@ -66,9 +73,9 @@ export function Button({
 // ---------------------------------------------------------------------------
 
 const CONTROL_CLASS =
-  'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 ' +
-  'placeholder:text-zinc-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 ' +
-  'dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500'
+  'w-full rounded-[var(--radius-control)] border border-field bg-surface px-4 py-2.5 text-sm text-ink ' +
+  'placeholder:text-faint transition-colors focus:border-accent focus:outline-none ' +
+  'focus:ring-2 focus:ring-accent/30'
 
 export function Field({
   label,
@@ -83,11 +90,9 @@ export function Field({
 }) {
   return (
     <label className={cx('block', className)}>
-      <span className="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-        {label}
-      </span>
+      <span className="mb-1.5 block text-xs font-semibold text-ink">{label}</span>
       {children}
-      {hint ? <span className="mt-1 block text-xs text-zinc-500">{hint}</span> : null}
+      {hint ? <span className="mt-1.5 block text-xs leading-relaxed text-muted">{hint}</span> : null}
     </label>
   )
 }
@@ -182,20 +187,20 @@ export function Toggle({
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={cx(
-          'relative mt-0.5 h-5 w-9 flex-none rounded-full transition-colors',
-          checked ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-700',
+          'relative mt-0.5 h-5 w-9 flex-none rounded-[var(--radius-pill)] transition-colors',
+          checked ? 'bg-accent' : 'bg-field',
         )}
       >
         <span
           className={cx(
-            'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform',
+            'absolute top-0.5 h-4 w-4 rounded-full bg-surface shadow transition-transform',
             checked ? 'translate-x-4.5' : 'translate-x-0.5',
           )}
         />
       </button>
       <span className="min-w-0">
-        <span className="block text-sm font-medium text-zinc-800 dark:text-zinc-200">{label}</span>
-        {hint ? <span className="block text-xs text-zinc-500">{hint}</span> : null}
+        <span className="block text-sm font-semibold text-ink">{label}</span>
+        {hint ? <span className="mt-0.5 block text-xs leading-relaxed text-muted">{hint}</span> : null}
       </span>
     </label>
   )
@@ -215,15 +220,15 @@ export function Card({
   actions?: ReactNode
 }) {
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <section className="rounded-[var(--radius-card)] border border-hair/60 bg-surface p-6 shadow-[var(--shadow-panel)]">
       {(title || actions) && (
         <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             {title ? (
-              <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{title}</h2>
+              <h2 className="text-heading-sm font-semibold text-ink">{title}</h2>
             ) : null}
             {description ? (
-              <p className="mt-0.5 text-xs text-zinc-500">{description}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted">{description}</p>
             ) : null}
           </div>
           {actions}
@@ -236,18 +241,18 @@ export function Card({
 
 export function Stat({ label, value, tone }: { label: string; value: string | number; tone?: 'good' | 'bad' }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="rounded-[var(--radius-card)] border border-hair/60 bg-surface px-5 py-4">
       <div
         className={cx(
-          'text-2xl font-semibold tabular-nums',
-          tone === 'good' && 'text-emerald-600 dark:text-emerald-400',
-          tone === 'bad' && 'text-red-600 dark:text-red-400',
-          !tone && 'text-zinc-900 dark:text-zinc-100',
+          'text-heading font-semibold tabular-nums',
+          tone === 'good' && 'text-good',
+          tone === 'bad' && 'text-bad',
+          !tone && 'text-ink',
         )}
       >
         {value}
       </div>
-      <div className="mt-0.5 text-xs text-zinc-500">{label}</div>
+      <div className="mt-1 text-caption text-muted">{label}</div>
     </div>
   )
 }
@@ -259,15 +264,16 @@ export function Banner({
   tone?: 'info' | 'warn' | 'error' | 'success'
   children: ReactNode
 }) {
+  // `info` uses the accent wash rather than a blue: a second hue would break
+  // the one-colour discipline the system is built on.
   const tones = {
-    info: 'border-indigo-200 bg-indigo-50 text-indigo-900 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-200',
-    warn: 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200',
-    error: 'border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-200',
-    success:
-      'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200',
+    info: 'border-accent/25 bg-accent-wash/50 text-ink',
+    warn: 'border-warn/30 bg-warn-wash text-warn',
+    error: 'border-bad/30 bg-bad-wash text-bad',
+    success: 'border-good/30 bg-good-wash text-good',
   }
   return (
-    <div className={cx('rounded-lg border px-3 py-2 text-xs leading-relaxed', tones[tone])}>
+    <div className={cx('rounded-[var(--radius-control)] border px-4 py-3 text-xs leading-relaxed', tones[tone])}>
       {children}
     </div>
   )

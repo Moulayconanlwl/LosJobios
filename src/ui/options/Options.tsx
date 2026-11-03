@@ -67,7 +67,7 @@ export function Options() {
         <span
           className={cx(
             'text-xs transition-opacity',
-            saving ? 'text-zinc-500 opacity-100' : 'text-emerald-600 opacity-70',
+            saving ? 'text-muted opacity-100' : 'text-good opacity-70',
           )}
         >
           {saving ? 'Saving…' : 'Saved'}

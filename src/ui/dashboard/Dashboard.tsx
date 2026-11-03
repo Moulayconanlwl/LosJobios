@@ -127,7 +127,7 @@ function ApplicationsSection() {
       <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Applications</h1>
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-muted">
             Everything the autopilot has sent, plus anything you move by hand.
           </p>
         </div>
@@ -167,7 +167,7 @@ function ApplicationsSection() {
               </option>
             ))}
           </Select>
-          <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+          <label className="flex items-center gap-2 text-xs text-muted">
             <input
               type="checkbox"
               checked={includeDryRuns}
@@ -176,7 +176,7 @@ function ApplicationsSection() {
             />
             Show dry runs
           </label>
-          <span className="ml-auto text-xs text-zinc-500">
+          <span className="ml-auto text-xs text-muted">
             {visible.length} of {applications.length}
           </span>
         </div>
@@ -187,7 +187,7 @@ function ApplicationsSection() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[52rem] text-left text-sm">
               <thead>
-                <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
+                <tr className="border-b border-hair text-xs uppercase tracking-wide text-muted">
                   <th className="pb-2 pr-3 font-medium">Role</th>
                   <th className="pb-2 pr-3 font-medium">Company</th>
                   <th className="pb-2 pr-3 font-medium">Applied</th>
@@ -195,7 +195,7 @@ function ApplicationsSection() {
                   <th className="pb-2 font-medium" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+              <tbody className="divide-y divide-hair">
                 {visible.map((app) => (
                   <ApplicationRow key={app.id} app={app} />
                 ))}
@@ -236,9 +236,9 @@ function FollowUpEditor({ app }: { app: Application }) {
   return (
     <tr>
       <td colSpan={5} className="px-1 pb-3">
-        <div className="grid gap-3 rounded-xl border border-zinc-200 p-3 sm:grid-cols-[10rem_1fr] dark:border-zinc-800">
+        <div className="grid gap-3 rounded-[var(--radius-card)] border border-hair p-3 sm:grid-cols-[10rem_1fr]">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            <span className="mb-1 block text-xs font-medium text-muted">
               Follow up on
             </span>
             <Input
@@ -250,7 +250,7 @@ function FollowUpEditor({ app }: { app: Application }) {
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            <span className="mb-1 block text-xs font-medium text-muted">
               Next action
             </span>
             <Input
@@ -262,7 +262,7 @@ function FollowUpEditor({ app }: { app: Application }) {
           </label>
 
           <label className="block sm:col-span-2">
-            <span className="mb-1 block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            <span className="mb-1 block text-xs font-medium text-muted">
               Notes
             </span>
             <Input
@@ -293,7 +293,7 @@ function ApplicationRow({ app }: { app: Application }) {
               href={app.url}
               target="_blank"
               rel="noreferrer"
-              className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+              className="font-medium text-accent hover:underline"
             >
               {app.title || 'Untitled role'}
             </a>
@@ -303,19 +303,19 @@ function ApplicationRow({ app }: { app: Application }) {
           {app.dryRun && <Badge tone="neutral">dry run</Badge>}
         </div>
         {app.location ? (
-          <div className="mt-0.5 text-xs text-zinc-500">{app.location}</div>
+          <div className="mt-0.5 text-xs text-muted">{app.location}</div>
         ) : null}
       </td>
 
-      <td className="py-3 pr-3 text-zinc-700 dark:text-zinc-300">{app.company || '—'}</td>
+      <td className="py-3 pr-3 text-muted">{app.company || '—'}</td>
 
-      <td className="py-3 pr-3 text-xs text-zinc-500" title={new Date(app.appliedAt).toLocaleString()}>
+      <td className="py-3 pr-3 text-xs text-muted" title={new Date(app.appliedAt).toLocaleString()}>
         {relativeDate(app.appliedAt)}
         {app.followUpOn ? (
           <span
             className={cx(
               'mt-0.5 block',
-              due ? 'font-medium text-amber-600 dark:text-amber-400' : 'text-zinc-400',
+              due ? 'font-medium text-warn ' : 'text-faint',
             )}
           >
             {due ? 'follow up now' : `follow up ${app.followUpOn}`}
@@ -359,10 +359,10 @@ function ApplicationRow({ app }: { app: Application }) {
 function EmptyState({ hasAny }: { hasAny: boolean }) {
   return (
     <div className="py-12 text-center">
-      <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+      <p className="text-sm font-medium text-muted">
         {hasAny ? 'Nothing matches those filters.' : 'No applications yet.'}
       </p>
-      <p className="mx-auto mt-1 max-w-md text-xs text-zinc-500">
+      <p className="mx-auto mt-1 max-w-md text-xs text-muted">
         {hasAny
           ? 'Try clearing the search, or tick “Show dry runs” if you’ve only done test runs so far.'
           : 'Open a LinkedIn or Indeed job search, click the extension, and press Start. Dry run is on by default, so the first pass won’t submit anything.'}

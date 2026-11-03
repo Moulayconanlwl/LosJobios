@@ -3,7 +3,14 @@ import { AnthropicAdapter } from '@/lib/ai/adapters/anthropic'
 import { OpenAiAdapter } from '@/lib/ai/adapters/openai'
 import { GeminiChatAdapter } from '@/lib/ai/adapters/gemini-chat'
 import { describeHttpFailure, parseJsonReply, unwrapJson } from '@/lib/ai/chat'
-import { effectiveBaseUrl, migrateLegacyProvider, providerOrigin, selectProvider } from '@/lib/ai/registry'
+import {
+  effectiveBaseUrl,
+  migrateLegacyProvider,
+  providerOrigin,
+  selectProvider,
+  testKey,
+  testModel,
+} from '@/lib/ai/registry'
 import { aiProviderConfigSchema, defaultSettings, settingsSchema } from '@/lib/schema'
 
 /**
@@ -242,5 +249,102 @@ describe('migrating a single-key configuration', () => {
       ai: { provider: 'gemini', apiKey: 'k', model: 'm', providers: [{ id: 'x' }] },
     })
     expect(migrateLegacyProvider(settings)).toBeNull()
+  })
+})
+
+describe('checking a key before choosing a model', () => {
+  /*
+   * The model name is the field people get wrong most often: no two vendors
+   * publish ids in the same shape and the lineups turn over constantly. So
+   * the key is verified first and the list comes back from the vendor, rather
+   * than asking someone to type an id correctly from memory.
+   */
+  it('refuses before a key is pasted, without calling anything', async () => {
+    const result = await testKey(aiProviderConfigSchema.parse({ id: 'a', type: 'openai' }))
+
+    expect(result.ok).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('insists on a base URL for a compatible endpoint', async () => {
+    const result = await testKey(
+      aiProviderConfigSchema.parse({ id: 'a', type: 'openai-compatible', apiKey: 'k' }),
+    )
+
+    expect(result).toMatchObject({ ok: false })
+    expect(result.ok === false && result.error).toMatch(/base URL/i)
+  })
+
+  it('returns the models the key can actually call', async () => {
+    vi.stubGlobal('chrome', { permissions: { contains: async () => true } })
+    fetchMock.mockResolvedValueOnce(ok({ data: [{ id: 'gpt-4.1-mini' }, { id: 'gpt-4.1' }] }))
+
+    const result = await testKey(
+      aiProviderConfigSchema.parse({ id: 'a', type: 'openai', apiKey: 'sk-1' }),
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.ok && result.models.map((m) => m.id)).toContain('gpt-4.1-mini')
+  })
+
+  it('treats an endpoint with no model list as working, not broken', async () => {
+    /*
+     * A self-hosted server need not implement /models at all, and the key may
+     * be perfectly good. Reporting that as a failure would send someone
+     * hunting a problem that isn't there.
+     */
+    vi.stubGlobal('chrome', { permissions: { contains: async () => true } })
+    fetchMock.mockResolvedValueOnce(ok({ data: [] }))
+
+    const result = await testKey(
+      aiProviderConfigSchema.parse({
+        id: 'a',
+        type: 'openai-compatible',
+        apiKey: '',
+        baseUrl: 'http://localhost:11434/v1',
+      }),
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.ok && result.note).toMatch(/type the model name yourself/i)
+  })
+
+  it('reports a rejected key as a key problem', async () => {
+    vi.stubGlobal('chrome', { permissions: { contains: async () => true } })
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => '{}',
+      json: async () => ({}),
+    })
+
+    const result = await testKey(
+      aiProviderConfigSchema.parse({ id: 'a', type: 'openai', apiKey: 'bad' }),
+    )
+
+    expect(result).toMatchObject({ ok: false })
+    expect(result.ok === false && result.error).toMatch(/API key/i)
+  })
+})
+
+describe('checking the chosen model separately', () => {
+  it('will not run without a model, since that is a different fix', async () => {
+    const result = await testModel(
+      aiProviderConfigSchema.parse({ id: 'a', type: 'openai', apiKey: 'k' }),
+    )
+
+    expect(result).toMatchObject({ ok: false })
+    expect(result.ok === false && result.error).toMatch(/model/i)
+  })
+
+  it('proves the model answers', async () => {
+    // A key can list models perfectly and still 404 on the one picked.
+    fetchMock.mockResolvedValueOnce(ok({ choices: [{ message: { content: 'OK' } }] }))
+
+    const result = await testModel(
+      aiProviderConfigSchema.parse({ id: 'a', type: 'openai', apiKey: 'k', model: 'gpt-4.1-mini' }),
+    )
+
+    expect(result).toMatchObject({ ok: true, reply: 'OK' })
   })
 })

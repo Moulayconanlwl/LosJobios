@@ -89,18 +89,18 @@ export function BackupSection({ draft }: { draft: Draft<Settings> }) {
               <DownloadIcon className="h-4 w-4" />
               Export everything
             </Button>
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-muted">
               {applications.length} applications · {jobs.length} saved jobs
             </span>
           </div>
 
-          <div className="border-t border-zinc-200 pt-4 dark:border-zinc-800">
-            <p className="mb-2 text-xs font-medium text-zinc-700 dark:text-zinc-300">
+          <div className="border-t border-hair pt-4">
+            <p className="mb-2 text-xs font-medium text-muted">
               Restore from a backup
             </p>
 
             <div className="flex flex-col gap-2">
-              <label className="flex items-start gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+              <label className="flex items-start gap-2 text-xs text-muted">
                 <input
                   type="checkbox"
                   className="mt-0.5 rounded"

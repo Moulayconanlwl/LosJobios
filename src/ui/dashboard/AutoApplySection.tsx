@@ -99,21 +99,21 @@ export function AutoApplySection() {
           </Banner>
         )}
 
-        <p className="mt-3 text-xs text-zinc-500">
+        <p className="mt-3 text-xs text-muted">
           {settings?.onUnknownQuestion === 'skip'
             ? 'A question nothing can answer will skip that posting and notify you, rather than stopping the run.'
             : 'A question nothing can answer will stop the run and ask you. Change that under Settings → Automation.'}
         </p>
 
         {visible.length === 0 ? (
-          <p className="py-10 text-center text-sm text-zinc-500">
+          <p className="py-10 text-center text-sm text-muted">
             {jobs.length === 0
               ? 'No saved jobs yet. Scan a search from the side panel first.'
               : 'Nothing matches that search.'}
           </p>
         ) : (
           <>
-            <div className="mt-4 flex items-center gap-2 border-b border-zinc-200 pb-2 dark:border-zinc-800">
+            <div className="mt-4 flex items-center gap-2 border-b border-hair pb-2">
               <label className="flex cursor-pointer items-center gap-2 text-xs font-medium">
                 <input
                   type="checkbox"
@@ -124,7 +124,7 @@ export function AutoApplySection() {
                 />
                 Select all {visible.length}
               </label>
-              <span className="ml-auto text-xs tabular-nums text-zinc-500">
+              <span className="ml-auto text-xs tabular-nums text-muted">
                 {chosen.length} selected
               </span>
             </div>
@@ -152,7 +152,7 @@ export function AutoApplySection() {
               ? 'A run is already going'
               : `Apply to ${chosen.length} selected job${chosen.length === 1 ? '' : 's'}`}
           </Button>
-          {note ? <span className="text-xs text-zinc-500">{note}</span> : null}
+          {note ? <span className="text-xs text-muted">{note}</span> : null}
         </div>
       </Card>
     </div>
@@ -172,16 +172,16 @@ function JobRow({
     <li>
       <label
         className={cx(
-          'flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 transition-colors',
+          'flex cursor-pointer items-start gap-2.5 rounded-[var(--radius-card)] border px-3 py-2.5 transition-colors',
           checked
-            ? 'border-indigo-300 bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-950'
-            : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800',
+            ? 'border-accent bg-accent-wash'
+            : 'border-hair hover:bg-canvas',
         )}
       >
         <input type="checkbox" className="mt-1" checked={checked} onChange={onToggle} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{job.title || 'Untitled role'}</span>
-          <span className="block truncate text-xs text-zinc-500">
+          <span className="block truncate text-xs text-muted">
             {job.company || 'Unknown company'}
             {job.location ? ` · ${job.location}` : ''}
           </span>
@@ -196,7 +196,7 @@ function JobRow({
             ) : (
               <Badge tone="neutral">no description</Badge>
             )}
-            <span className="ml-auto text-[11px] text-zinc-400">{timeAgo(job.savedAt)}</span>
+            <span className="ml-auto text-[11px] text-faint">{timeAgo(job.savedAt)}</span>
           </span>
         </span>
       </label>

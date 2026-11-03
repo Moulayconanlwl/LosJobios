@@ -18,36 +18,36 @@ import { useProfile, useSettings } from '../../hooks'
 function toneFor(score: number): { bar: string; text: string; label: string } {
   if (score >= 75) {
     return {
-      bar: 'bg-emerald-500',
-      text: 'text-emerald-600 dark:text-emerald-400',
+      bar: 'bg-good',
+      text: 'text-good',
       label: 'Should get through a keyword screen',
     }
   }
   if (score >= 50) {
     return {
-      bar: 'bg-amber-500',
-      text: 'text-amber-600 dark:text-amber-400',
+      bar: 'bg-warn',
+      text: 'text-warn',
       label: 'Borderline — worth a pass before applying',
     }
   }
   return {
-    bar: 'bg-red-500',
-    text: 'text-red-600 dark:text-red-400',
+    bar: 'bg-bad',
+    text: 'text-bad',
     label: 'Likely filtered out before a human sees it',
   }
 }
 
 function Chip({ term, tone }: { term: string; tone: 'good' | 'bad' | 'easy' }) {
   const tones = {
-    good: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-    bad: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
-    easy: 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300',
+    good: 'bg-good-wash text-good',
+    bad: 'bg-warn-wash text-warn',
+    easy: 'bg-accent-wash text-accent',
   }
 
   return (
     <span
       className={cx(
-        'inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium',
+        'inline-flex items-center rounded-[var(--radius-control)] px-1.5 py-0.5 text-[11px] font-medium',
         tones[tone],
       )}
     >
@@ -66,15 +66,15 @@ function Chip({ term, tone }: { term: string; tone: 'good' | 'bad' | 'easy' }) {
 const SEVERITY_STYLE: Record<AtsSeverity, { label: string; className: string }> = {
   critical: {
     label: 'Filters you out',
-    className: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300',
+    className: 'bg-bad-wash text-bad',
   },
   important: {
     label: 'Costs you ranking',
-    className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+    className: 'bg-warn-wash text-warn',
   },
   polish: {
     label: 'Worth a look',
-    className: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+    className: 'bg-raised text-muted',
   },
 }
 
@@ -83,7 +83,7 @@ function SuggestionList({ suggestions }: { suggestions: AtsSuggestion[] }) {
 
   return (
     <div>
-      <h3 className="mb-2 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+      <h3 className="mb-2 text-xs font-semibold text-muted">
         What to change, worst first
       </h3>
       <ul className="flex flex-col gap-2.5">
@@ -92,7 +92,7 @@ function SuggestionList({ suggestions }: { suggestions: AtsSuggestion[] }) {
           return (
             <li
               key={suggestion.id}
-              className="rounded-md border border-zinc-200 p-2.5 dark:border-zinc-800"
+              className="rounded-[var(--radius-control)] border border-hair p-2.5"
             >
               <div className="mb-1 flex flex-wrap items-baseline gap-2">
                 <span
@@ -103,11 +103,11 @@ function SuggestionList({ suggestions }: { suggestions: AtsSuggestion[] }) {
                 >
                   {severity.label}
                 </span>
-                <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200">
+                <span className="text-xs font-medium text-ink">
                   {suggestion.title}
                 </span>
               </div>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400">{suggestion.detail}</p>
+              <p className="text-xs text-muted">{suggestion.detail}</p>
             </li>
           )
         })}
@@ -269,7 +269,7 @@ function ScoreCard({ result }: { result: AtsScore }) {
           <div className={cx('text-5xl font-semibold tabular-nums', tone.text)}>{result.score}</div>
           <div className="pb-1">
             <div className="text-sm font-medium">{tone.label}</div>
-            <div className="text-xs text-zinc-500">out of 100</div>
+            <div className="text-xs text-muted">out of 100</div>
           </div>
         </div>
 
@@ -277,27 +277,27 @@ function ScoreCard({ result }: { result: AtsScore }) {
           {result.components.map((component) => (
             <div key={component.id}>
               <div className="mb-1 flex items-baseline justify-between gap-3 text-xs">
-                <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                <span className="font-medium text-muted">
                   {component.label}
                 </span>
-                <span className="tabular-nums text-zinc-500">
+                <span className="tabular-nums text-muted">
                   {Math.round(component.score * 100)}%
                 </span>
               </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-raised">
                 <div
                   className={cx('h-full rounded-full', toneFor(component.score * 100).bar)}
                   style={{ width: `${Math.round(component.score * 100)}%` }}
                 />
               </div>
-              <p className="mt-1 text-xs text-zinc-500">{component.detail}</p>
+              <p className="mt-1 text-xs text-muted">{component.detail}</p>
             </div>
           ))}
         </div>
 
         {result.matched.length ? (
           <div>
-            <h3 className="mb-2 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+            <h3 className="mb-2 text-xs font-semibold text-muted">
               Found in your resume
             </h3>
             <div className="flex flex-wrap gap-1.5">
@@ -310,10 +310,10 @@ function ScoreCard({ result }: { result: AtsScore }) {
 
         {result.easyWins.length ? (
           <div>
-            <h3 className="mb-1 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+            <h3 className="mb-1 text-xs font-semibold text-muted">
               Your profile says these; the document doesn&rsquo;t
             </h3>
-            <p className="mb-2 text-xs text-zinc-500">
+            <p className="mb-2 text-xs text-muted">
               The tracker reads the file you upload, not this profile. Nothing here has to become
               true &mdash; the resume just has to say it.
             </p>
@@ -327,7 +327,7 @@ function ScoreCard({ result }: { result: AtsScore }) {
 
         {result.missing.length ? (
           <div>
-            <h3 className="mb-2 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+            <h3 className="mb-2 text-xs font-semibold text-muted">
               In the posting, nowhere in your application
             </h3>
             <div className="flex flex-wrap gap-1.5">
@@ -360,10 +360,10 @@ function ReviewCard({ review }: { review: ResumeReview }) {
           .filter((list) => list.items.length > 0)
           .map((list) => (
             <div key={list.title}>
-              <h3 className="mb-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+              <h3 className="mb-1.5 text-xs font-semibold text-muted">
                 {list.title}
               </h3>
-              <ul className="flex list-disc flex-col gap-1.5 pl-4 text-sm text-zinc-700 dark:text-zinc-300">
+              <ul className="flex list-disc flex-col gap-1.5 pl-4 text-sm text-muted">
                 {/* Model output, so two identical lines are possible — index keys. */}
                 {list.items.map((item, index) => (
                   <li key={`${list.title}-${index}`}>{item}</li>

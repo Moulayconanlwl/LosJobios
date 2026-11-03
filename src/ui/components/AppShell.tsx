@@ -42,19 +42,19 @@ export function AppShell<Id extends string>({
   children: ReactNode
 }) {
   return (
-    <div className="flex min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <div className="flex min-h-screen bg-canvas text-ink">
       <nav
         aria-label="Sections"
-        className="sticky top-0 flex h-screen w-16 flex-none flex-col gap-1 border-r border-zinc-200 bg-white p-3 lg:w-60 dark:border-zinc-800 dark:bg-zinc-900"
+        className="sticky top-0 flex h-screen w-16 flex-none flex-col gap-1 border-r border-hair/60 bg-surface p-4 lg:w-60"
       >
         <div className="mb-4 flex items-center gap-2.5 px-1.5 pt-1">
-          <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-indigo-600 text-sm font-bold text-white">
+          <span className="grid h-9 w-9 flex-none place-items-center rounded-[var(--radius-control)] bg-accent text-sm font-bold text-accent-ink">
             LJ
           </span>
           <span className="hidden min-w-0 lg:block">
             <span className="block truncate text-sm font-semibold">{title}</span>
             {subtitle ? (
-              <span className="block truncate text-xs text-zinc-500">{subtitle}</span>
+              <span className="block truncate text-xs text-muted">{subtitle}</span>
             ) : null}
           </span>
         </div>
@@ -71,11 +71,11 @@ export function AppShell<Id extends string>({
               aria-current={selected ? 'page' : undefined}
               onClick={() => onSelect(item.id)}
               className={cx(
-                'group flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-medium transition-colors',
+                'group flex items-center gap-3 rounded-[var(--radius-control)] px-3 py-2.5 text-sm font-semibold transition-colors',
                 'justify-center lg:justify-start',
                 selected
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800',
+                  ? 'bg-accent text-accent-ink shadow-[var(--shadow-control)]'
+                  : 'text-muted hover:bg-accent-wash/50 hover:text-ink',
               )}
             >
               <Icon className="h-5 w-5 flex-none" />
@@ -83,10 +83,10 @@ export function AppShell<Id extends string>({
               {item.badge !== undefined && item.badge > 0 ? (
                 <span
                   className={cx(
-                    'hidden rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums lg:block',
+                    'hidden rounded-[var(--radius-control)] px-1.5 py-0.5 text-[11px] font-semibold tabular-nums lg:block',
                     selected
-                      ? 'bg-white/20 text-white'
-                      : 'bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
+                      ? 'bg-accent-ink/20 text-accent-ink'
+                      : 'bg-raised text-muted',
                   )}
                 >
                   {item.badge}
@@ -101,7 +101,7 @@ export function AppShell<Id extends string>({
 
       <div className="min-w-0 flex-1">
         {aside ? (
-          <header className="flex flex-wrap items-center justify-end gap-3 border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+          <header className="warm-wash flex flex-wrap items-center justify-end gap-3 border-b border-hair/60 bg-surface px-8 py-4">
             {aside}
           </header>
         ) : null}
@@ -126,7 +126,7 @@ export function SidebarLink({
       type="button"
       title={label}
       onClick={onClick}
-      className="flex w-full items-center justify-center gap-3 rounded-xl border border-zinc-200 px-2.5 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 lg:justify-start dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800"
+      className="flex w-full items-center justify-center gap-3 rounded-[var(--radius-card)] border border-hair px-2.5 py-2 text-sm font-medium text-muted transition-colors hover:bg-raised lg:justify-start"
     >
       <Icon className="h-5 w-5 flex-none" />
       <span className="hidden truncate lg:block">{label}</span>

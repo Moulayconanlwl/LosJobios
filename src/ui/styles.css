@@ -1,23 +1,179 @@
 @import 'tailwindcss';
 
+/*
+ * Harvest "golden hour workbench", from DESIGN.md.
+ *
+ * Two deliberate departures from that document, both noted where they occur:
+ *
+ *   1. DESIGN.md describes a marketing site — hero gradient washes, trust
+ *      badge rows, 72px serif display headlines. This is a working tool used
+ *      in a 400px side panel, so the *system* is adopted (warm cream canvas,
+ *      one orange, warm-tinted shadows, 16/20px radii, the type scale) and
+ *      the page furniture is not.
+ *
+ *   2. DESIGN.md is light-only. Dropping dark mode would be a regression for
+ *      anyone running the browser dark, so every colour below is a *semantic*
+ *      token with a warm dark counterpart derived from the same hues. Nothing
+ *      in the app references a raw palette colour, which is what makes one
+ *      override enough.
+ */
+
 @theme {
+  /* --- Raw palette, exactly as DESIGN.md names them ------------------- */
+  --color-harvest-flame: #fa5d00;
+  --color-marigold-glow: #fee3b5;
+  --color-parchment-shadow: #e3d6c5;
+  --color-ink-black: #1d1e1c;
+  --color-paper-white: #ffffff;
+  --color-cream-canvas: #fff8f1;
+  --color-mist-gray: #d9d9d9;
+  --color-warm-stone: #615f5c;
+  --color-driftwood: #8e8b87;
+  --color-ironwood: #4a4a47;
+  --color-ash: #777571;
+  --color-bone: #c0bbb6;
+  --color-smoke: #a5a19c;
+  --color-graphite: #999999;
+
+  /*
+   * Semantic tokens. These are what components use.
+   *
+   * Defined here so Tailwind generates `bg-canvas`, `text-ink`, `border-hair`
+   * and so on, then re-pointed per theme in the base layer below.
+   */
+  --color-canvas: var(--color-cream-canvas);
+  --color-surface: var(--color-paper-white);
+  --color-raised: var(--color-cream-canvas);
+  --color-ink: var(--color-ink-black);
+  --color-muted: var(--color-warm-stone);
+  --color-faint: var(--color-driftwood);
+  --color-hair: var(--color-mist-gray);
+  --color-field: var(--color-bone);
+  --color-accent: var(--color-harvest-flame);
+  --color-accent-ink: var(--color-paper-white);
+  --color-accent-wash: var(--color-marigold-glow);
+
+  /* Status. Warm-leaning so they sit in the same family as the accent. */
+  --color-good: #2f7d53;
+  --color-good-wash: #e8f3ec;
+  --color-warn: #a66300;
+  --color-warn-wash: #fdf0db;
+  --color-bad: #c0392b;
+  --color-bad-wash: #fbeae8;
+
+  /* --- Type ----------------------------------------------------------- */
+  /* MuotoWeb and Monarch are licensed faces this project does not ship.
+     DESIGN.md names the substitutes; these are those, with system fallbacks
+     so nothing is fetched over the network at runtime. */
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    'MuotoWeb', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
+  --font-display:
+    'Monarch', 'GT Super', 'Tiempos Headline', ui-serif, Georgia, 'Times New Roman', serif;
+
+  --text-caption: 13px;
+  --text-caption--line-height: 1.35;
+  --text-caption--letter-spacing: 0.2px;
+  --text-subheading: 18px;
+  --text-subheading--line-height: 1.4;
+  --text-subheading--letter-spacing: 0.27px;
+  --text-heading-sm: 20px;
+  --text-heading-sm--line-height: 1.3;
+  --text-heading-sm--letter-spacing: 0.3px;
+  --text-heading: 24px;
+  --text-heading--line-height: 1.26;
+  --text-heading--letter-spacing: 0.36px;
+  --text-heading-lg: 28px;
+  --text-heading-lg--line-height: 1.2;
+  --text-heading-lg--letter-spacing: 0.42px;
+  --text-display: 48px;
+  --text-display--line-height: 1.15;
+  --text-display--letter-spacing: 0.72px;
+
+  /* --- Shape ---------------------------------------------------------- */
+  /* The 16/20px pair is called out in DESIGN.md as the tactile signature. */
+  --radius-control: 16px;
+  --radius-card: 20px;
+  --radius-pill: 999px;
+
+  /* --- Elevation ------------------------------------------------------ */
+  /* Warm-tinted, never neutral grey — the shadow hue matches the cream. */
+  --shadow-control: rgba(0, 0, 0, 0.2) 0px 1px 4px 0px;
+  --shadow-card: rgba(250, 166, 0, 0.25) 6px 4px 24px 0px;
+  --shadow-panel: rgba(227, 214, 197, 0.9) 0px 1px 3px 0px;
 }
 
 @layer base {
   html {
-    /* Let the browser paint form controls and scrollbars to match. */
     color-scheme: light dark;
   }
 
+  /*
+   * The warm dark counterpart.
+   *
+   * Hue-matched to the light theme rather than a generic slate: the canvas is
+   * a very dark warm brown, not blue-black, so the orange still reads as part
+   * of the same system. The accent lightens slightly because #fa5d00 on a
+   * dark ground is harsher than it is on cream.
+   */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-canvas: #17150f;
+      --color-surface: #211e18;
+      --color-raised: #2a261f;
+      --color-ink: #f5efe6;
+      --color-muted: #b8afa2;
+      --color-faint: #8e8b87;
+      --color-hair: #38332b;
+      --color-field: #4a4339;
+      --color-accent: #ff7a2b;
+      --color-accent-ink: #1d1e1c;
+      --color-accent-wash: #3a2a14;
+
+      --color-good: #6cc08b;
+      --color-good-wash: #16281d;
+      --color-warn: #e0a048;
+      --color-warn-wash: #2e2311;
+      --color-bad: #f0796b;
+      --color-bad-wash: #2e1613;
+
+      --shadow-card: rgba(0, 0, 0, 0.45) 6px 4px 24px 0px;
+      --shadow-panel: rgba(0, 0, 0, 0.5) 0px 1px 3px 0px;
+    }
+  }
+
   body {
-    @apply bg-zinc-50 text-zinc-900 antialiased;
-    @apply dark:bg-zinc-950 dark:text-zinc-100;
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
     font-family: var(--font-sans);
+    /* DESIGN.md: positive tracking is what softens the geometric sans. */
+    letter-spacing: 0.015em;
+    -webkit-font-smoothing: antialiased;
   }
 
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-indigo-500;
+    outline: 2px solid var(--color-accent);
+    outline-offset: 4px;
+  }
+
+  /* Warm the scrollbars too, so a long list does not reintroduce cold grey. */
+  * {
+    scrollbar-color: var(--color-field) transparent;
+    scrollbar-width: thin;
+  }
+}
+
+@layer components {
+  /*
+   * The one decorative flourish carried over from DESIGN.md's hero wash,
+   * reduced to something a tool can wear: a faint warm glow behind a panel
+   * header. Low opacity, never behind text that has to be read.
+   */
+  .warm-wash {
+    background-image: radial-gradient(
+      120% 100% at 0% 0%,
+      color-mix(in srgb, var(--color-accent) 12%, transparent) 0%,
+      transparent 60%
+    );
   }
 }

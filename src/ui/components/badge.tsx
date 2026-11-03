@@ -1,13 +1,21 @@
 import type { ReactNode } from 'react'
 import { cx } from './ui'
 
+/*
+ * `ai` and `info` use the accent wash rather than violet and sky.
+ *
+ * DESIGN.md allows exactly one chromatic decision, so a badge palette with
+ * six hues would undo the discipline the rest of the system keeps. The status
+ * three stay distinct because they mean pass, caution and failure; everything
+ * else is warm neutral.
+ */
 const TONES = {
-  neutral: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
-  ai: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
-  warn: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
-  good: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-  bad: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
-  info: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
+  neutral: 'bg-raised text-muted',
+  ai: 'bg-accent-wash text-accent',
+  warn: 'bg-warn-wash text-warn',
+  good: 'bg-good-wash text-good',
+  bad: 'bg-bad-wash text-bad',
+  info: 'bg-accent-wash/60 text-ink',
 } as const
 
 export type BadgeTone = keyof typeof TONES
@@ -16,7 +24,7 @@ export function Badge({ tone = 'neutral', children }: { tone?: BadgeTone; childr
   return (
     <span
       className={cx(
-        'inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium capitalize',
+        'inline-flex items-center rounded-[var(--radius-pill)] px-2 py-0.5 text-[11px] font-semibold capitalize',
         TONES[tone],
       )}
     >

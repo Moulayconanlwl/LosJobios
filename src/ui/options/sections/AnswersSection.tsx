@@ -50,13 +50,13 @@ export function AnswersSection() {
       }
     >
       {filtered.length === 0 ? (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-muted">
           {answers.length
             ? 'Nothing matches that search.'
             : 'When an application asks something new, the answer lands here so the next one is instant.'}
         </p>
       ) : (
-        <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
+        <ul className="divide-y divide-hair">
           {filtered.map((entry) => (
             <AnswerRow key={entry.id} entry={entry} />
           ))}
@@ -109,11 +109,11 @@ function AnswerRow({ entry }: { entry: AnswerEntry }) {
     <li className="py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{entry.question}</p>
+          <p className="text-sm font-medium text-ink">{entry.question}</p>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <Badge tone={entry.source === 'ai' ? 'ai' : 'neutral'}>{entry.source}</Badge>
             {!entry.confirmed && <Badge tone="warn">unreviewed</Badge>}
-            <span className="text-xs text-zinc-500">used {entry.useCount}×</span>
+            <span className="text-xs text-muted">used {entry.useCount}×</span>
           </div>
         </div>
 

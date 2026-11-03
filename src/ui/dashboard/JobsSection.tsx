@@ -138,14 +138,14 @@ export function JobsSection() {
                     type="button"
                     onClick={() => setSelectedId(job.id)}
                     className={cx(
-                      'w-full rounded-xl border px-3 py-2.5 text-left transition-colors',
+                      'w-full rounded-[var(--radius-card)] border px-3 py-2.5 text-left transition-colors',
                       job.id === selectedId
-                        ? 'border-indigo-300 bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-950'
-                        : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800',
+                        ? 'border-accent bg-accent-wash'
+                        : 'border-hair hover:bg-canvas',
                     )}
                   >
                     <div className="truncate text-sm font-medium">{job.title || 'Untitled role'}</div>
-                    <div className="truncate text-xs text-zinc-500">
+                    <div className="truncate text-xs text-muted">
                       {job.company || 'Unknown company'}
                       {job.location ? ` · ${job.location}` : ''}
                     </div>
@@ -157,13 +157,13 @@ export function JobsSection() {
                       )}
                       {job.coverLetter ? <Badge tone="ai">letter</Badge> : null}
                       {job.resume ? <Badge tone="ai">resume</Badge> : null}
-                      <span className="ml-auto text-[11px] text-zinc-400">{timeAgo(job.savedAt)}</span>
+                      <span className="ml-auto text-[11px] text-faint">{timeAgo(job.savedAt)}</span>
                     </div>
                   </button>
                 </li>
               ))}
               {visible.length === 0 ? (
-                <li className="px-3 py-6 text-center text-xs text-zinc-500">
+                <li className="px-3 py-6 text-center text-xs text-muted">
                   Nothing matches that search.
                 </li>
               ) : null}
@@ -209,16 +209,16 @@ function EmptyJobs() {
 
   return (
     <div className="py-10 text-center">
-      <SearchIcon className="mx-auto h-8 w-8 text-zinc-300 dark:text-zinc-700" />
+      <SearchIcon className="mx-auto h-8 w-8 text-faint" />
       <p className="mt-3 text-sm font-medium">No saved jobs yet.</p>
-      <p className="mx-auto mt-1 max-w-md text-xs text-zinc-500">
+      <p className="mx-auto mt-1 max-w-md text-xs text-muted">
         Open a LinkedIn or Indeed job search and press <strong>Scan this page for jobs</strong> in the
         extension popup — or just start a run, and everything it sees lands here.
       </p>
       <Button variant="secondary" className="mt-4" disabled={busy} onClick={() => void scan()}>
         {busy ? 'Scanning…' : 'Scan the page I have open'}
       </Button>
-      {note ? <p className="mt-3 text-xs text-zinc-500">{note}</p> : null}
+      {note ? <p className="mt-3 text-xs text-muted">{note}</p> : null}
     </div>
   )
 }
@@ -315,11 +315,11 @@ function JobDetail({
     })
 
   return (
-    <div className="min-w-0 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+    <div className="min-w-0 rounded-[var(--radius-card)] border border-hair p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold">{job.title || 'Untitled role'}</h3>
-          <p className="truncate text-xs text-zinc-500">
+          <p className="truncate text-xs text-muted">
             {job.company || 'Unknown company'}
             {job.location ? ` · ${job.location}` : ''}
           </p>
@@ -330,7 +330,7 @@ function JobDetail({
               href={job.url}
               target="_blank"
               rel="noreferrer"
-              className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+              className="text-xs font-medium text-accent hover:underline"
             >
               Open posting
             </a>
@@ -346,17 +346,17 @@ function JobDetail({
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-1.5 border-b border-zinc-200 pb-3 dark:border-zinc-800">
+      <div className="mt-3 flex flex-wrap gap-1.5 border-b border-hair pb-3">
         {TABS.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => onTab(item.id)}
             className={cx(
-              'rounded-lg px-2.5 py-1 text-xs font-medium transition-colors',
+              'rounded-[var(--radius-control)] px-2.5 py-1 text-xs font-medium transition-colors',
               tab === item.id
-                ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-                : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800',
+                ? 'bg-accent text-accent-ink'
+                : 'text-muted hover:bg-raised',
             )}
           >
             {item.label}
@@ -389,11 +389,11 @@ function JobDetail({
       <div className="mt-3">
         {tab === 'description' ? (
           job.description ? (
-            <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap font-sans text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
+            <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap font-sans text-xs leading-relaxed text-muted">
               {job.description}
             </pre>
           ) : (
-            <p className="text-xs text-zinc-500">Nothing read from this posting yet.</p>
+            <p className="text-xs text-muted">Nothing read from this posting yet.</p>
           )
         ) : null}
 
@@ -438,7 +438,7 @@ function JobDetail({
           score ? (
             <ScoreSummary score={score} />
           ) : (
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-muted">
               {job.description
                 ? 'Add a resume under Settings → Profile to score against this posting.'
                 : 'Fetch the description first.'}
@@ -494,11 +494,11 @@ function Material({
       </div>
 
       {body ? (
-        <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-3 font-sans text-xs leading-relaxed dark:border-zinc-800 dark:bg-zinc-950">
+        <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-[var(--radius-control)] border border-hair bg-canvas p-3 font-sans text-xs leading-relaxed">
           {body}
         </pre>
       ) : (
-        <p className="text-xs text-zinc-500">{emptyHint}</p>
+        <p className="text-xs text-muted">{emptyHint}</p>
       )}
     </div>
   )
@@ -560,24 +560,24 @@ function ResumePanel({
       </div>
 
       {!rendered ? (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-muted">
           Rewrites your real roles to lead with what this posting asks for. It never adds
           experience you don&rsquo;t have — companies, titles and dates come straight from your
           profile, and anything the posting wants that your history can&rsquo;t back up is listed
           as a gap instead.
         </p>
       ) : (
-        <div className="flex flex-col gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="flex flex-col gap-4 rounded-[var(--radius-control)] border border-hair bg-surface p-4">
           <div>
             <p className="text-sm font-semibold">{rendered.name || 'Your name'}</p>
             {rendered.contact.length ? (
-              <p className="text-xs text-zinc-500">{rendered.contact.join(' | ')}</p>
+              <p className="text-xs text-muted">{rendered.contact.join(' | ')}</p>
             ) : null}
           </div>
 
           {rendered.summary ? (
             <section>
-              <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+              <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
                 Summary
               </h4>
               <p className="text-xs leading-relaxed">{rendered.summary}</p>
@@ -586,14 +586,14 @@ function ResumePanel({
 
           {rendered.skills.length ? (
             <section>
-              <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+              <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
                 Skills
               </h4>
               <div className="flex flex-wrap gap-1">
                 {rendered.skills.map((skill) => (
                   <span
                     key={skill}
-                    className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[11px] dark:bg-zinc-800"
+                    className="rounded-[var(--radius-control)] bg-raised px-1.5 py-0.5 text-[11px]"
                   >
                     {skill}
                   </span>
@@ -604,7 +604,7 @@ function ResumePanel({
 
           {rendered.roles.length ? (
             <section>
-              <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+              <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
                 Experience
               </h4>
               <div className="flex flex-col gap-3">
@@ -614,7 +614,7 @@ function ResumePanel({
                       {[role.title, role.company].filter(Boolean).join(' — ')}
                     </p>
                     {role.dates || role.location ? (
-                      <p className="text-[11px] text-zinc-500">
+                      <p className="text-[11px] text-muted">
                         {[role.location, role.dates].filter(Boolean).join(' | ')}
                       </p>
                     ) : null}
@@ -631,7 +631,7 @@ function ResumePanel({
 
           {rendered.education.length ? (
             <section>
-              <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+              <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
                 Education
               </h4>
               <ul className="flex list-disc flex-col gap-0.5 pl-4 text-xs">
@@ -647,12 +647,12 @@ function ResumePanel({
           ) : null}
 
           {rendered.notes.length ? (
-            <section className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950">
-              <h4 className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+            <section className="rounded-[var(--radius-control)] border border-warn bg-warn-wash p-3">
+              <h4 className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-warn">
                 <DocIcon className="h-3.5 w-3.5" />
                 What changed, and what it couldn&rsquo;t claim
               </h4>
-              <ul className="flex list-disc flex-col gap-1 pl-4 text-xs text-amber-900 dark:text-amber-200">
+              <ul className="flex list-disc flex-col gap-1 pl-4 text-xs text-warn">
                 {rendered.notes.map((note, index) => (
                   <li key={index}>{note}</li>
                 ))}
@@ -668,10 +668,10 @@ function ResumePanel({
 function ScoreSummary({ score }: { score: AtsScore }) {
   const tone =
     score.score >= 75
-      ? 'text-emerald-600 dark:text-emerald-400'
+      ? 'text-good'
       : score.score >= 50
-        ? 'text-amber-600 dark:text-amber-400'
-        : 'text-red-600 dark:text-red-400'
+        ? 'text-warn'
+        : 'text-bad'
 
   const critical = score.suggestions.filter((suggestion) => suggestion.severity === 'critical')
 
@@ -679,7 +679,7 @@ function ScoreSummary({ score }: { score: AtsScore }) {
     <div className="flex flex-col gap-3">
       <div className="flex items-end gap-3">
         <span className={cx('text-4xl font-semibold tabular-nums', tone)}>{score.score}</span>
-        <span className="pb-1.5 text-xs text-zinc-500">out of 100</span>
+        <span className="pb-1.5 text-xs text-muted">out of 100</span>
       </div>
 
       {/*
@@ -689,10 +689,10 @@ function ScoreSummary({ score }: { score: AtsScore }) {
       */}
       {critical.length ? (
         <div>
-          <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400">
+          <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-bad">
             Would filter you out
           </h4>
-          <ul className="flex list-disc flex-col gap-1 pl-4 text-xs text-zinc-600 dark:text-zinc-400">
+          <ul className="flex list-disc flex-col gap-1 pl-4 text-xs text-muted">
             {critical.map((suggestion) => (
               <li key={suggestion.id}>{suggestion.title}</li>
             ))}
@@ -702,14 +702,14 @@ function ScoreSummary({ score }: { score: AtsScore }) {
 
       {score.easyWins.length ? (
         <div>
-          <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+          <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
             Your profile says these; the document doesn&rsquo;t
           </h4>
           <div className="flex flex-wrap gap-1">
             {score.easyWins.map((term) => (
               <span
                 key={term}
-                className="rounded-md bg-sky-100 px-1.5 py-0.5 text-[11px] text-sky-800 dark:bg-sky-950 dark:text-sky-300"
+                className="rounded-[var(--radius-control)] bg-accent-wash px-1.5 py-0.5 text-[11px] text-accent"
               >
                 {term}
               </span>
@@ -720,14 +720,14 @@ function ScoreSummary({ score }: { score: AtsScore }) {
 
       {score.missing.length ? (
         <div>
-          <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+          <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
             In the posting, nowhere in your application
           </h4>
           <div className="flex flex-wrap gap-1">
             {score.missing.map((term) => (
               <span
                 key={term}
-                className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                className="rounded-[var(--radius-control)] bg-warn-wash px-1.5 py-0.5 text-[11px] text-warn"
               >
                 {term}
               </span>
@@ -736,7 +736,7 @@ function ScoreSummary({ score }: { score: AtsScore }) {
         </div>
       ) : null}
 
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-muted">
         The full breakdown, with what to do about it, lives under{' '}
         <strong>Settings → ATS score</strong>.
       </p>

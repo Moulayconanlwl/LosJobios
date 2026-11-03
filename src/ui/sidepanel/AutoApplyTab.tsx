@@ -37,12 +37,12 @@ const PLATFORMS = [
 /** A collapsible group, matching the reference panel's disclosure sections. */
 function Details({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <details className="group rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-600 marker:content-[''] dark:text-zinc-400">
+    <details className="group rounded-[var(--radius-control)] border border-hair">
+      <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted marker:content-['']">
         <span className="mr-1.5 inline-block transition-transform group-open:rotate-90">&#9656;</span>
         {title}
       </summary>
-      <div className="flex flex-col gap-3 border-t border-zinc-200 px-3 py-3 dark:border-zinc-800">
+      <div className="flex flex-col gap-3 border-t border-hair px-3 py-3">
         {children}
       </div>
     </details>
@@ -51,7 +51,7 @@ function Details({ title, children }: { title: string; children: React.ReactNode
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
       {children}
     </span>
   )
@@ -174,7 +174,7 @@ export function AutoApplyTab({ settings, run }: Props) {
       </label>
 
       {spec.platform === 'indeed' ? (
-        <p className="rounded-md bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900 dark:bg-amber-950 dark:text-amber-300">
+        <p className="rounded-[var(--radius-control)] bg-warn-wash px-2.5 py-2 text-[11px] text-warn">
           <strong>Indeed is on hold.</strong> Its driver is written and tested but has never been
           confirmed against the live site. Leave it on LinkedIn unless you are deliberately
           testing Indeed, and keep dry run on if you do.
@@ -200,7 +200,7 @@ export function AutoApplyTab({ settings, run }: Props) {
             placeholder="Paris, France…"
             onChange={(e) => patchFilters({ location: e.target.value })}
           />
-          <span className="text-[11px] text-zinc-500">
+          <span className="text-[11px] text-muted">
             Auto picks the country site from this. Set Market if results land on the wrong one.
           </span>
         </label>
@@ -240,7 +240,7 @@ export function AutoApplyTab({ settings, run }: Props) {
         </div>
 
         {spec.platform === 'indeed' ? (
-          <p className="text-[11px] text-zinc-500">
+          <p className="text-[11px] text-muted">
             Work type is applied to the scraped titles rather than to Indeed&rsquo;s own search:
             Indeed encodes it as an opaque country-specific code, and a wrong guess returns zero
             results rather than fewer.
@@ -258,7 +258,7 @@ export function AutoApplyTab({ settings, run }: Props) {
           />
           <span className="text-xs">
             <span className="font-medium">Only jobs I can apply to without leaving the site</span>
-            <span className="block text-zinc-500">
+            <span className="block text-muted">
               Uses the board&rsquo;s own filter, so nothing is opened just to find out it applies
               somewhere else.
             </span>
@@ -267,10 +267,10 @@ export function AutoApplyTab({ settings, run }: Props) {
 
         <div
           className={cx(
-            'rounded-md px-2.5 py-2 text-xs',
+            'rounded-[var(--radius-control)] px-2.5 py-2 text-xs',
             settings.dryRun
-              ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-              : 'bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-300',
+              ? 'bg-good-wash text-good'
+              : 'bg-warn-wash text-warn',
           )}
         >
           {settings.dryRun ? (
@@ -284,7 +284,7 @@ export function AutoApplyTab({ settings, run }: Props) {
               daily cap of {settings.dailyCap}.
             </>
           )}
-          <span className="mt-1 block text-zinc-500">Change this under Settings &rarr; Automation.</span>
+          <span className="mt-1 block text-muted">Change this under Settings &rarr; Automation.</span>
         </div>
       </Details>
 
@@ -313,9 +313,9 @@ export function AutoApplyTab({ settings, run }: Props) {
         </Button>
       </div>
 
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-muted">
         {note ? (
-          <span className="text-red-600 dark:text-red-400">{note}</span>
+          <span className="text-bad">{note}</span>
         ) : run && run.status !== 'idle' ? (
           <>
             {run.lastMessage}
@@ -329,7 +329,7 @@ export function AutoApplyTab({ settings, run }: Props) {
       </p>
 
       {preview ? (
-        <p className="break-all text-[11px] text-zinc-400" title={preview}>
+        <p className="break-all text-[11px] text-faint" title={preview}>
           Opens: {preview}
         </p>
       ) : null}

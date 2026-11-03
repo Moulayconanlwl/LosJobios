@@ -36,10 +36,10 @@ function ProfileHealthCard({ profile }: { profile: Profile }) {
 
   const tone =
     health.score >= 80
-      ? { bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' }
+      ? { bar: 'bg-good', text: 'text-good' }
       : health.score >= 50
-        ? { bar: 'bg-amber-500', text: 'text-amber-600 dark:text-amber-400' }
-        : { bar: 'bg-red-500', text: 'text-red-600 dark:text-red-400' }
+        ? { bar: 'bg-warn', text: 'text-warn' }
+        : { bar: 'bg-bad', text: 'text-bad' }
 
   return (
     <Card
@@ -49,10 +49,10 @@ function ProfileHealthCard({ profile }: { profile: Profile }) {
       <div className="flex items-end gap-4">
         <span className={cx('text-4xl font-semibold tabular-nums', tone.text)}>{health.score}%</span>
         <div className="flex-1 pb-1.5">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-raised">
             <div className={cx('h-full rounded-full', tone.bar)} style={{ width: `${health.score}%` }} />
           </div>
-          <p className="mt-1.5 text-xs text-zinc-500">
+          <p className="mt-1.5 text-xs text-muted">
             {health.gaps.length === 0
               ? 'Nothing missing — forms should fill cleanly.'
               : `${health.gaps.length} thing${health.gaps.length === 1 ? '' : 's'} left to add.`}
@@ -72,10 +72,10 @@ function ProfileHealthCard({ profile }: { profile: Profile }) {
         <ul className="mt-4 flex flex-col gap-2">
           {health.gaps.slice(0, 5).map((gap) => (
             <li key={gap.id} className="flex items-start gap-2.5">
-              <span className="mt-1 h-1.5 w-1.5 flex-none rounded-full bg-zinc-300 dark:bg-zinc-700" />
+              <span className="mt-1 h-1.5 w-1.5 flex-none rounded-full bg-field" />
               <span className="min-w-0">
                 <span className="block text-xs font-medium">{gap.label}</span>
-                <span className="block text-xs text-zinc-500">{gap.impact}</span>
+                <span className="block text-xs text-muted">{gap.impact}</span>
               </span>
             </li>
           ))}
@@ -434,7 +434,7 @@ export function ProfileSection({ draft }: { draft: Draft<Profile> }) {
           <Field label="Skills">
             <ListTextarea
               rows={3}
-              separator=", "
+              separator=","
               value={profile.skills}
               placeholder="Python, Kubernetes, PostgreSQL"
               onChange={(next) => draft.update({ skills: next })}
@@ -443,7 +443,7 @@ export function ProfileSection({ draft }: { draft: Draft<Profile> }) {
           <Field label="Languages">
             <ListTextarea
               rows={3}
-              separator=", "
+              separator=","
               value={profile.languages}
               placeholder="English, Spanish"
               onChange={(next) => draft.update({ languages: next })}
@@ -458,10 +458,10 @@ export function ProfileSection({ draft }: { draft: Draft<Profile> }) {
       >
         <div className="flex flex-col gap-3">
           {profile.resume?.fileName ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-hair px-3 py-2">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{profile.resume.fileName}</p>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-muted">
                   {(profile.resume.sizeBytes / 1024).toFixed(0)} KB
                 </p>
               </div>
@@ -470,7 +470,7 @@ export function ProfileSection({ draft }: { draft: Draft<Profile> }) {
               </Button>
             </div>
           ) : (
-            <p className="text-xs text-zinc-500">No resume uploaded yet.</p>
+            <p className="text-xs text-muted">No resume uploaded yet.</p>
           )}
 
           <input
@@ -584,7 +584,7 @@ export function ProfileSection({ draft }: { draft: Draft<Profile> }) {
           {coverLetterStatus === 'error' && <Banner tone="error">{coverLetterError}</Banner>}
 
           {coverLetterPreview ? (
-            <div className="whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-800 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">
+            <div className="whitespace-pre-wrap rounded-[var(--radius-control)] border border-hair bg-canvas p-3 text-sm text-ink">
               {coverLetterPreview}
             </div>
           ) : null}

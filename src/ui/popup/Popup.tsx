@@ -56,7 +56,7 @@ export function Popup() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-sm font-semibold">LosJobios</h1>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-muted">
             {running ? 'Running' : blocked ? 'Waiting on you' : status === 'paused' ? 'Paused' : 'Idle'}
           </p>
         </div>
@@ -99,7 +99,7 @@ export function Popup() {
       </div>
 
       {state?.lastMessage ? (
-        <p className="truncate text-xs text-zinc-500" title={state.lastMessage}>
+        <p className="truncate text-xs text-muted" title={state.lastMessage}>
           {state.lastMessage}
         </p>
       ) : null}
@@ -222,14 +222,14 @@ export function Popup() {
       {autofillNote ? <Banner tone="success">{autofillNote}</Banner> : null}
 
       {settings ? (
-        <div className="border-t border-zinc-200 pt-3 dark:border-zinc-800">
+        <div className="border-t border-hair pt-3">
           <Toggle
             checked={settings.dryRun}
             label="Dry run"
             hint="Fill and navigate, but never submit."
             onChange={(next) => void patchSettings({ dryRun: next })}
           />
-          <label className="mt-3 flex items-center justify-between text-xs text-zinc-600 dark:text-zinc-400">
+          <label className="mt-3 flex items-center justify-between text-xs text-muted">
             <span>Daily cap</span>
             <Input
               type="number"
@@ -240,14 +240,14 @@ export function Popup() {
               className="ml-3 w-20"
             />
           </label>
-          <p className="mt-2 text-xs text-zinc-500">
+          <p className="mt-2 text-xs text-muted">
             {state?.dailyCount ?? 0} of {settings.dailyCap} used today.
           </p>
         </div>
       ) : null}
 
       <button
-        className="text-left text-xs text-zinc-500 underline"
+        className="text-left text-xs text-muted underline"
         onClick={() => void chrome.runtime.openOptionsPage()}
       >
         Profile &amp; settings
@@ -267,11 +267,11 @@ function PendingQuestionCard({ question, options }: { question: string; options:
   const { busy, error, run } = useAction()
 
   return (
-    <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
-      <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+    <div className="rounded-[var(--radius-card)] border border-warn bg-warn-wash p-3">
+      <p className="text-xs font-semibold text-warn">
         This application asks:
       </p>
-      <p className="mt-1 text-sm text-amber-950 dark:text-amber-100">{question}</p>
+      <p className="mt-1 text-sm text-warn">{question}</p>
 
       <div className="mt-3">
         {options.length ? (
@@ -292,7 +292,7 @@ function PendingQuestionCard({ question, options }: { question: string; options:
         )}
       </div>
 
-      <label className="mt-2 flex items-center gap-2 text-xs text-amber-900 dark:text-amber-200">
+      <label className="mt-2 flex items-center gap-2 text-xs text-warn">
         <input
           type="checkbox"
           checked={remember}
@@ -302,7 +302,7 @@ function PendingQuestionCard({ question, options }: { question: string; options:
         Remember this answer for next time
       </label>
 
-      {error ? <p className="mt-2 text-xs text-red-700 dark:text-red-300">{error}</p> : null}
+      {error ? <p className="mt-2 text-xs text-bad">{error}</p> : null}
 
       <Button
         variant="primary"

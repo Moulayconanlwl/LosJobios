@@ -5,8 +5,10 @@ import {
   PROVIDER_LABELS,
   effectiveBaseUrl,
   providerOrigin,
-  testProvider,
+  testKey,
+  testModel,
 } from '@/lib/ai/registry'
+import type { ProviderModel } from '@/lib/ai/provider'
 import { Banner, Button, Card, Field, Input, Select, Toggle, cx } from '../../components/ui'
 import type { Draft } from '../../hooks'
 
@@ -46,6 +48,14 @@ export function AiSection({ draft }: { draft: Draft<Settings> }) {
   const settings = draft.value
   const [testing, setTesting] = useState<string>('')
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({})
+  /*
+   * Models the key turned out to be entitled to, per provider.
+   *
+   * Held in component state rather than saved: it is a fact about the key
+   * right now, it goes stale as vendors retire models, and persisting it
+   * would mean showing a list that no longer matches what the key can call.
+   */
+  const [models, setModels] = useState<Record<string, ProviderModel[]>>({})
 
   if (!settings) return null
   const { ai } = settings
@@ -66,19 +76,59 @@ export function AiSection({ draft }: { draft: Draft<Settings> }) {
       defaultProviderId: ai.defaultProviderId === id ? '' : ai.defaultProviderId,
     })
 
+  /**
+   * Check the key, then show what it can call.
+   *
+   * Asking someone to type a model id correctly from memory is the single
+   * biggest source of "it doesn't work": no two vendors name them alike and
+   * the lineups turn over constantly. So the key is verified first and the
+   * list comes back from the vendor itself.
+   */
   const runTest = async (config: AiProviderConfig) => {
     setTesting(config.id)
-    setResults((current) => ({ ...current, [config.id]: { ok: false, message: 'Testing…' } }))
+    setResults((current) => ({ ...current, [config.id]: { ok: false, message: 'Checking key…' } }))
 
-    // Inside the click handler: the permission request Chrome may raise here
-    // is rejected outright if it isn't tied to a user gesture.
-    const result = await testProvider(config)
+    // Inside the click handler: a permission request Chrome raises here is
+    // rejected outright unless it is tied to a user gesture.
+    const keyResult = await testKey(config)
+
+    if (!keyResult.ok) {
+      setResults((current) => ({ ...current, [config.id]: { ok: false, message: keyResult.error } }))
+      setTesting('')
+      return
+    }
+
+    setModels((current) => ({ ...current, [config.id]: keyResult.models }))
+
+    // Pick the first model for them when none is set, so the common case is
+    // key-paste-test-done rather than key-paste-test-then-choose.
+    const chosen =
+      config.model || (keyResult.models.length === 1 ? (keyResult.models[0]?.id ?? '') : '')
+    if (chosen && chosen !== config.model) upsert({ ...config, model: chosen })
+
+    if (!chosen) {
+      setResults((current) => ({
+        ...current,
+        [config.id]: {
+          ok: true,
+          message:
+            keyResult.note ??
+            `Key works — ${keyResult.models.length} model${keyResult.models.length === 1 ? '' : 's'} available. Choose one below.`,
+        },
+      }))
+      setTesting('')
+      return
+    }
+
+    // A key can list models perfectly and still 404 on the chosen one, so
+    // the model gets its own check.
+    const modelResult = await testModel({ ...config, model: chosen })
 
     setResults((current) => ({
       ...current,
-      [config.id]: result.ok
-        ? { ok: true, message: `Connected. The model replied "${result.reply}".` }
-        : { ok: false, message: result.error },
+      [config.id]: modelResult.ok
+        ? { ok: true, message: `Connected. ${chosen} replied "${modelResult.reply}".` }
+        : { ok: false, message: modelResult.error },
     }))
     setTesting('')
   }
@@ -111,6 +161,7 @@ export function AiSection({ draft }: { draft: Draft<Settings> }) {
                 }
                 testing={testing === provider.id}
                 result={results[provider.id]}
+                models={models[provider.id]}
                 onChange={upsert}
                 onRemove={() => remove(provider.id)}
                 onMakeDefault={() => update({ defaultProviderId: provider.id })}
@@ -186,6 +237,7 @@ function ProviderCard({
   isDefault,
   testing,
   result,
+  models,
   onChange,
   onRemove,
   onMakeDefault,
@@ -195,6 +247,8 @@ function ProviderCard({
   isDefault: boolean
   testing: boolean
   result?: { ok: boolean; message: string }
+  /** Set once the key has been checked; undefined before that. */
+  models?: ProviderModel[]
   onChange: (config: AiProviderConfig) => void
   onRemove: () => void
   onMakeDefault: () => void
@@ -206,10 +260,10 @@ function ProviderCard({
   return (
     <div
       className={cx(
-        'rounded-xl border p-3',
+        'rounded-[var(--radius-card)] border p-3',
         isDefault
-          ? 'border-indigo-300 dark:border-indigo-800'
-          : 'border-zinc-200 dark:border-zinc-800',
+          ? 'border-accent'
+          : 'border-hair',
       )}
     >
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -220,7 +274,7 @@ function ProviderCard({
           onChange={(e) => set({ name: e.target.value })}
         />
         {isDefault ? (
-          <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+          <span className="rounded-[var(--radius-pill)] bg-accent-wash px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
             Default
           </span>
         ) : (
@@ -229,7 +283,7 @@ function ProviderCard({
           </Button>
         )}
         <Button size="sm" variant="secondary" className="ml-auto" disabled={testing} onClick={onTest}>
-          {testing ? 'Testing…' : 'Test connection'}
+          {testing ? 'Checking…' : 'Test key'}
         </Button>
         <Button size="sm" variant="danger" onClick={onRemove}>
           Delete
@@ -258,14 +312,38 @@ function ProviderCard({
 
         <Field
           label="Model"
-          hint="Free text, because every vendor's lineup turns over. Test connection is what confirms it."
+          hint={
+            models === undefined
+              ? 'Paste the key and press Test key — the list comes from the provider.'
+              : models.length
+                ? `${models.length} available to this key.`
+                : 'This endpoint publishes no model list, so type the name yourself.'
+          }
         >
-          <Input
-            value={provider.model}
-            placeholder={MODEL_HINTS[provider.type]}
-            spellCheck={false}
-            onChange={(e) => set({ model: e.target.value })}
-          />
+          {models && models.length ? (
+            <Select value={provider.model} onChange={(e) => set({ model: e.target.value })}>
+              <option value="">Choose a model…</option>
+              {models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            /*
+             * Before the key is checked, and for endpoints with no /models,
+             * the box stays free text. Removing it entirely would strand
+             * anyone on a self-hosted server that does not publish a list.
+             */
+            <Input
+              value={provider.model}
+              placeholder={
+                models === undefined ? 'Test the key to load models' : MODEL_HINTS[provider.type]
+              }
+              spellCheck={false}
+              onChange={(e) => set({ model: e.target.value })}
+            />
+          )}
         </Field>
 
         <Field
@@ -326,17 +404,17 @@ function ProviderCard({
         </Field>
       </div>
 
-      <p className="mt-2 text-[11px] text-zinc-500">
-        Calls go to <code>{effectiveBaseUrl(provider) || '—'}</code>. Pressing Test connection asks
-        Chrome for permission to reach {providerOrigin(provider) || 'that host'}; nothing is sent
-        until you grant it.
+      <p className="mt-2 text-[11px] text-muted">
+        Calls go to <code>{effectiveBaseUrl(provider) || '—'}</code>. Pressing Test key asks Chrome
+        for permission to reach {providerOrigin(provider) || 'that host'}; nothing is sent until you
+        grant it.
       </p>
 
       {result ? (
         <p
           className={cx(
             'mt-2 text-xs',
-            result.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400',
+            result.ok ? 'text-good ' : 'text-bad',
           )}
         >
           {result.message}

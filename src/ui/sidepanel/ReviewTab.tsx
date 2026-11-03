@@ -167,14 +167,14 @@ export function ReviewTab() {
   const profileThin = profile ? !profile.firstName || !profile.email : false
 
   return (
-    <div className="flex min-h-screen flex-col gap-3 bg-zinc-50 p-3 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <div className="flex min-h-screen flex-col gap-3 bg-canvas p-3 text-ink">
       <header className="flex items-center gap-2">
-        <span className="grid h-7 w-7 flex-none place-items-center rounded-lg bg-indigo-600 text-xs font-bold text-white">
+        <span className="grid h-7 w-7 flex-none place-items-center rounded-[var(--radius-control)] bg-accent text-xs font-bold text-accent-ink">
           LJ
         </span>
         <div className="min-w-0">
           <h1 className="truncate text-sm font-semibold">{t('panel.title')}</h1>
-          <p className="truncate text-xs text-zinc-500">{t('panel.subtitle')}</p>
+          <p className="truncate text-xs text-muted">{t('panel.subtitle')}</p>
         </div>
       </header>
 
@@ -207,11 +207,11 @@ export function ReviewTab() {
       {result ? <Banner tone="success">{result}</Banner> : null}
 
       {errors.length ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 dark:border-amber-900 dark:bg-amber-950">
-          <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+        <div className="rounded-[var(--radius-control)] border border-warn bg-warn-wash p-2.5">
+          <p className="text-xs font-semibold text-warn">
             {t('panel.rejected')} ({errors.length})
           </p>
-          <ul className="mt-1.5 flex list-disc flex-col gap-1 pl-4 text-xs text-amber-900 dark:text-amber-200">
+          <ul className="mt-1.5 flex list-disc flex-col gap-1 pl-4 text-xs text-warn">
             {errors.map((entry, index) => (
               <li key={index}>
                 {entry.fieldLabel ? <strong>{entry.fieldLabel}: </strong> : null}
@@ -219,7 +219,7 @@ export function ReviewTab() {
               </li>
             ))}
           </ul>
-          <p className="mt-1.5 text-[11px] text-amber-800 dark:text-amber-300">
+          <p className="mt-1.5 text-[11px] text-warn">
             {t('panel.rejectedHint')}
           </p>
         </div>
@@ -231,7 +231,7 @@ export function ReviewTab() {
 
       {stage === 'review' || stage === 'done' ? (
         <>
-          <div className="flex items-center justify-between text-xs text-zinc-500">
+          <div className="flex items-center justify-between text-xs text-muted">
             <span>
               {proposals.length} proposed
               {skipped ? ` · ${skipped} already filled` : ''}
@@ -253,7 +253,7 @@ export function ReviewTab() {
           </ul>
 
           {proposals.length === 0 ? (
-            <p className="py-6 text-center text-xs text-zinc-500">
+            <p className="py-6 text-center text-xs text-muted">
               {t('panel.nothingLeft')}
             </p>
           ) : null}
@@ -261,7 +261,7 @@ export function ReviewTab() {
       ) : null}
 
       {stage === 'review' && proposals.length > 0 ? (
-        <div className="sticky bottom-0 -mx-3 mt-auto border-t border-zinc-200 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="sticky bottom-0 -mx-3 mt-auto border-t border-hair bg-surface px-3 py-3">
           <Button
             variant="primary"
             className="w-full"
@@ -273,7 +273,7 @@ export function ReviewTab() {
               ? t('panel.nothingSelected')
               : `Fill ${selectedCount} selected field${selectedCount === 1 ? '' : 's'}`}
           </Button>
-          <p className="mt-1.5 text-center text-[11px] text-zinc-500">
+          <p className="mt-1.5 text-center text-[11px] text-muted">
             {t('panel.neverSubmits')}
           </p>
         </div>
@@ -290,9 +290,9 @@ function SiteBanner({ site }: { site: SiteReport }) {
 function EmptyState() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center">
-      <DocIcon className="h-8 w-8 text-zinc-300 dark:text-zinc-700" />
+      <DocIcon className="h-8 w-8 text-faint" />
       <p className="text-sm font-medium">Open an application form</p>
-      <p className="max-w-[16rem] text-xs text-zinc-500">
+      <p className="max-w-[16rem] text-xs text-muted">
         Press <strong>Scan this form</strong> and every field it can fill is listed here first,
         with where each value came from. You decide what gets written.
       </p>
@@ -313,10 +313,10 @@ function ProposalRow({
   return (
     <li
       className={cx(
-        'rounded-xl border p-2.5 transition-colors',
+        'rounded-[var(--radius-card)] border p-2.5 transition-colors',
         proposal.selected
-          ? 'border-indigo-300 bg-white dark:border-indigo-800 dark:bg-zinc-900'
-          : 'border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/40',
+          ? 'border-accent bg-surface'
+          : 'border-hair bg-canvas',
       )}
     >
       <div className="flex items-start gap-2">
@@ -335,10 +335,10 @@ function ProposalRow({
             <Badge tone={sourceTone(proposal.source)}>{sourceLabel(proposal.source)}</Badge>
           </div>
 
-          <p className="mt-0.5 text-[11px] text-zinc-500">{proposal.reason}</p>
+          <p className="mt-0.5 text-[11px] text-muted">{proposal.reason}</p>
 
           {proposal.attachment ? (
-            <p className="mt-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs dark:bg-zinc-800">
+            <p className="mt-1.5 rounded-[var(--radius-control)] bg-raised px-2 py-1 text-xs">
               {proposal.value}
             </p>
           ) : unresolved ? (

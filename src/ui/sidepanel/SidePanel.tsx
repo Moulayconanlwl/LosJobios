@@ -29,11 +29,11 @@ const TABS: Array<{ id: Tab; label: string }> = [
 function statusOf(status: string | undefined): { dot: string; label: string } {
   switch (status) {
     case 'running':
-      return { dot: 'bg-emerald-500', label: 'Running' }
+      return { dot: 'bg-good', label: 'Running' }
     case 'paused':
-      return { dot: 'bg-amber-500', label: 'Paused' }
+      return { dot: 'bg-warn', label: 'Paused' }
     case 'blocked':
-      return { dot: 'bg-amber-500', label: 'Needs you' }
+      return { dot: 'bg-warn', label: 'Needs you' }
     case 'finished':
       return { dot: 'bg-sky-500', label: 'Finished' }
     default:
@@ -52,17 +52,17 @@ function Kpi({
   tone: 'good' | 'bad' | 'muted'
 }) {
   const tones = {
-    good: 'text-emerald-600 dark:text-emerald-400',
-    bad: 'text-red-600 dark:text-red-400',
-    muted: 'text-zinc-700 dark:text-zinc-300',
+    good: 'text-good',
+    bad: 'text-bad',
+    muted: 'text-muted',
   }
 
   return (
-    <div className="rounded-md bg-zinc-100 px-1.5 py-1 text-center dark:bg-zinc-900">
+    <div className="rounded-[var(--radius-control)] bg-raised px-1.5 py-1 text-center">
       <div className={cx('text-base font-semibold tabular-nums leading-none', tones[tone])}>
         {value}
       </div>
-      <div className="mt-0.5 text-[10px] uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted">{label}</div>
     </div>
   )
 }
@@ -77,12 +77,12 @@ export function SidePanel() {
   const total = run?.queue.length ?? 0
 
   return (
-    <div className="flex h-screen flex-col bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <header className="border-b border-zinc-200 dark:border-zinc-800">
+    <div className="flex h-screen flex-col bg-surface text-ink">
+      <header className="border-b border-hair">
         <div className="flex items-center gap-2 px-3 py-2.5">
           <div className="min-w-0">
             <div className="text-sm font-semibold">LosJobios</div>
-            <div className="truncate text-[11px] text-zinc-500">
+            <div className="truncate text-[11px] text-muted">
               Stop retyping your life story.
             </div>
           </div>
@@ -100,16 +100,16 @@ export function SidePanel() {
           <span className={cx('h-2 w-2 shrink-0 rounded-full', status.dot)} />
           <span className="text-xs font-medium">{status.label}</span>
           {total > 0 ? (
-            <span className="ml-auto text-xs tabular-nums text-zinc-500">
+            <span className="ml-auto text-xs tabular-nums text-muted">
               {done} / {total}
             </span>
           ) : null}
         </div>
 
         {total > 0 ? (
-          <div className="mx-3 mb-2 h-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+          <div className="mx-3 mb-2 h-1 overflow-hidden rounded-full bg-raised">
             <div
-              className="h-full rounded-full bg-emerald-500 transition-all"
+              className="h-full rounded-full bg-good transition-all"
               style={{ width: `${Math.round((done / total) * 100)}%` }}
             />
           </div>
@@ -130,12 +130,12 @@ export function SidePanel() {
         ) : null}
 
         {run?.lastError ? (
-          <p className="mx-3 mb-2 rounded-md bg-red-50 px-2 py-1.5 text-[11px] text-red-700 dark:bg-red-950 dark:text-red-300">
+          <p className="mx-3 mb-2 rounded-[var(--radius-control)] bg-bad-wash px-2 py-1.5 text-[11px] text-bad">
             {run.lastError}
           </p>
         ) : null}
 
-        <nav className="flex border-t border-zinc-200 dark:border-zinc-800">
+        <nav className="flex border-t border-hair">
           {TABS.map((entry) => (
             <button
               key={entry.id}
@@ -144,8 +144,8 @@ export function SidePanel() {
               className={cx(
                 'flex-1 border-b-2 px-2 py-2 text-xs font-medium transition-colors',
                 tab === entry.id
-                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-                  : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200',
+                  ? 'border-accent text-accent'
+                  : 'border-transparent text-muted hover:text-ink',
               )}
             >
               {entry.label}
@@ -167,14 +167,14 @@ export function SidePanel() {
           settings ? (
             <AutoApplyTab settings={settings} run={run} />
           ) : (
-            <p className="p-4 text-xs text-zinc-500">Loading…</p>
+            <p className="p-4 text-xs text-muted">Loading…</p>
           )
         ) : null}
         {tab === 'review' ? <ReviewTab /> : null}
         {tab === 'logs' ? <LogsTab /> : null}
       </main>
 
-      <footer className="border-t border-zinc-200 px-3 py-1.5 text-center text-[11px] text-zinc-400 dark:border-zinc-800">
+      <footer className="border-t border-hair px-3 py-1.5 text-center text-[11px] text-faint">
         This never submits a form you haven&rsquo;t reviewed.
       </footer>
     </div>

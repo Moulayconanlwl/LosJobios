@@ -1,6 +1,7 @@
 import type { AiProviderConfig, Settings } from '../schema'
 import { AIProviderError } from './provider'
 import { originOf, type ChatProvider, type ChatRequest } from './chat'
+import type { ProviderModel } from './provider'
 import { AnthropicAdapter } from './adapters/anthropic'
 import { GeminiChatAdapter } from './adapters/gemini-chat'
 import { OpenAiAdapter } from './adapters/openai'
@@ -129,20 +130,28 @@ export function migrateLegacyProvider(settings: Settings): Settings | null {
 }
 
 /**
- * Prove a provider works, and say precisely what is wrong when it does not.
+ * Check a key and report what it can call.
  *
- * Deliberately a real generation rather than a models listing: a key can list
- * models and still fail to call one, and the model name is the field people
- * get wrong most often.
+ * The model name is the field people get wrong most often, and no two vendors
+ * publish ids in the same shape — so rather than asking someone to type one
+ * correctly from memory, this verifies the key and hands back the list the
+ * key itself is entitled to. The UI turns that into a dropdown.
+ *
+ * `models` can legitimately come back empty: a self-hosted endpoint need not
+ * implement `/models` at all. That is reported as a success with a note, not
+ * as a failure, because the key may be perfectly good.
  */
-export async function testProvider(
+export async function testKey(
   config: AiProviderConfig,
-): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
-  if (!config.model.trim()) {
-    return { ok: false, error: 'Enter a model name first — it is the exact id the provider publishes.' }
+): Promise<{ ok: true; models: ProviderModel[]; note?: string } | { ok: false; error: string }> {
+  if (config.type !== 'openai-compatible' && !config.apiKey.trim()) {
+    return { ok: false, error: 'Paste the API key first.' }
   }
   if (config.type === 'openai-compatible' && !config.baseUrl.trim()) {
-    return { ok: false, error: 'A compatible endpoint needs its base URL, e.g. https://openrouter.ai/api/v1' }
+    return {
+      ok: false,
+      error: 'A compatible endpoint needs its base URL, e.g. https://openrouter.ai/api/v1',
+    }
   }
 
   if (!(await hasProviderPermission(config))) {
@@ -154,6 +163,35 @@ export async function testProvider(
       }
     }
   }
+
+  try {
+    const models = await buildChatProvider(config).listModels()
+
+    if (!models.length) {
+      return {
+        ok: true,
+        models,
+        note: 'The key works, but this endpoint publishes no model list — type the model name yourself.',
+      }
+    }
+
+    return { ok: true, models }
+  } catch (err) {
+    return { ok: false, error: err instanceof AIProviderError ? err.message : String(err) }
+  }
+}
+
+/**
+ * Prove the chosen model actually answers.
+ *
+ * Separate from `testKey` because they fail for different reasons and the
+ * user can fix only one of them at a time: a key can list models perfectly
+ * and still 404 on the one that was picked.
+ */
+export async function testModel(
+  config: AiProviderConfig,
+): Promise<{ ok: true; reply: string } | { ok: false; error: string }> {
+  if (!config.model.trim()) return { ok: false, error: 'Choose a model first.' }
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 20_000)
@@ -168,10 +206,7 @@ export async function testProvider(
     })
     return { ok: true, reply: reply.slice(0, 80) }
   } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof AIProviderError ? err.message : String(err),
-    }
+    return { ok: false, error: err instanceof AIProviderError ? err.message : String(err) }
   } finally {
     clearTimeout(timer)
   }

@@ -69,13 +69,13 @@ export function HistorySection({ draft }: { draft: Draft<Profile> }) {
         }
       >
         {profile.experience.length === 0 ? (
-          <p className="text-xs text-zinc-500">No roles added yet.</p>
+          <p className="text-xs text-muted">No roles added yet.</p>
         ) : (
           <div className="flex flex-col gap-4">
             {profile.experience.map((entry) => (
               <div
                 key={entry.id}
-                className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
+                className="rounded-[var(--radius-control)] border border-hair p-4"
               >
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Title">
@@ -142,13 +142,13 @@ export function HistorySection({ draft }: { draft: Draft<Profile> }) {
         }
       >
         {profile.education.length === 0 ? (
-          <p className="text-xs text-zinc-500">No education added yet.</p>
+          <p className="text-xs text-muted">No education added yet.</p>
         ) : (
           <div className="flex flex-col gap-4">
             {profile.education.map((entry) => (
               <div
                 key={entry.id}
-                className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
+                className="rounded-[var(--radius-control)] border border-hair p-4"
               >
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="School">
