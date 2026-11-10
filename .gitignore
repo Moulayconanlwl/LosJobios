@@ -4,3 +4,6 @@ dist/
 .DS_Store
 .vite/
 *.zip
+
+# Windows crash dumps from tooling, never source.
+*.stackdump
