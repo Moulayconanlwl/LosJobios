@@ -16,7 +16,7 @@ import { defaultRunState, savedJobDefaults } from '@/lib/schema'
 import type { JobSource } from '@/lib/schema'
 import { logError, logInfo, logWarn } from '@/lib/debug-log'
 import { buildSearchUrl, type SearchSpec } from '@/lib/search-url'
-import { detectJobBoard, isApplyContinuation } from './boards'
+import { detectJobBoard, isApplyContinuation, isListingPage } from './boards'
 import { clearContentFrame, resolveContentFrame } from './frames'
 import { ensureContentScript, getActiveTab, isInjectable } from './injector'
 
@@ -178,7 +178,13 @@ export async function startRun(spec?: SearchSpec): Promise<Ack> {
     // Only stored for boards that navigate away to apply — it is what the run
     // steers back to between jobs, and there is nothing to steer back to on a
     // board whose flow never leaves the page.
-    boardUrl: board.navigatesToApply ? boardUrl : '',
+    /*
+     * Remembered for every board, not only the ones whose apply flow
+     * navigates. A stray navigation — a card whose click escaped as a link —
+     * leaves the run on a single posting with no list to work from, and this
+     * is what it steers back to.
+     */
+    boardUrl,
     startedAt: Date.now(),
     countedOn: today(),
     dailyCount: fresh.dailyCount,
@@ -512,9 +518,31 @@ async function runLoop(): Promise<void> {
       state = await getRunState()
     }
 
-    // The previous job may have left the tab on a confirmation page. Get back
-    // to the listing before trying to open anything from it.
-    if (state.boardUrl) {
+    /*
+     * Make sure there is still a list to work from.
+     *
+     * Two ways it goes: an apply flow that navigated away and landed on a
+     * confirmation page, or a card click that escaped as a link and opened
+     * the posting. Both leave the tab somewhere with no cards on it, and
+     * without this every remaining job fails looking for one.
+     */
+    if (state.mode === 'search' && state.boardUrl) {
+      const here = await currentTabUrl(tabId)
+      if (!isListingPage(here)) {
+        void logWarn('run', 'Left the results page — going back', hostOf(here))
+        const recovered = await returnToBoard(tabId, state.boardUrl)
+        if (!recovered) {
+          await patchRunState({
+            status: 'paused',
+            lastError: 'Could not get back to the search results. Reopen the search and resume.',
+          })
+          return
+        }
+        await clearContentFrame(tabId)
+        await patchRunState({ frameId: (await resolveContentFrame(tabId, 6000)) ?? null })
+        state = await getRunState()
+      }
+    } else if (state.boardUrl) {
       const returned = await returnToBoard(tabId, state.boardUrl)
       if (!returned) {
         await patchRunState({
@@ -755,7 +783,17 @@ async function returnToBoard(tabId: number, boardUrl: string): Promise<boolean> 
   }
 
   const landed = await waitForTabSettled(tabId, CONTINUATION_LOAD_MS)
-  if (!landed || !sameDocument(landed, boardUrl)) return false
+  if (!landed) return false
+
+  /*
+   * Either the exact page, or any results page on the way to it.
+   *
+   * Boards rewrite their own URLs — LinkedIn appends `currentJobId`, both
+   * normalise trailing slashes and add tracking parameters — so an exact
+   * comparison reports a perfectly good return as a failure and pauses a run
+   * that is sitting on the list it asked for.
+   */
+  if (!sameDocument(landed, boardUrl) && !isListingPage(landed)) return false
 
   return ensureContentScript(tabId)
 }

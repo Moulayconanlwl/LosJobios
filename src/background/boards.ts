@@ -76,6 +76,40 @@ export function detectJobBoard(url: string | null | undefined): JobBoard | null 
 }
 
 /**
+ * Is this URL still a *results* page, rather than one posting?
+ *
+ * Distinct from `detectJobBoard`, which answers "is this a board at all" and
+ * is therefore true of `/jobs/view/123` as well. A run works down a list, so
+ * landing on a single posting means something navigated when it should not
+ * have — and the run has to come back rather than keep looking for cards on
+ * a page that has none.
+ *
+ * LinkedIn rewrites its own query string as you move between cards
+ * (`?currentJobId=…`), so this deliberately looks only at the path. Comparing
+ * whole URLs would see every selection as a navigation and reload forever.
+ */
+export function isListingPage(url: string | null | undefined): boolean {
+  if (!url) return false
+
+  try {
+    const parsed = new URL(url)
+    const path = parsed.pathname
+
+    if (/(^|\.)linkedin\.com$/.test(parsed.hostname)) {
+      return /^\/jobs\/(search|collections)/.test(path)
+    }
+
+    if (/(^|\.)indeed\.[a-z]{2,3}(\.[a-z]{2})?$/.test(parsed.hostname)) {
+      return /^\/(jobs|q-|m\/jobs)/.test(path)
+    }
+
+    return false
+  } catch {
+    return false
+  }
+}
+
+/**
  * Does this URL continue an application that started somewhere else?
  *
  * The run engine asks this after losing contact with a tab mid-apply: landing

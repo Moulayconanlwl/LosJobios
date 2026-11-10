@@ -2,7 +2,7 @@ import type { ApplyOutcome, AutofillReport } from '@/lib/messaging'
 import type { JobRef, PendingQuestion } from '@/lib/schema'
 import { collectFields, type DetectedField } from '../fields'
 import { fillFields } from '../filler'
-import { humanClick, pause, sleep } from '../dom/human'
+import { clickInPlace, humanClick, pause, sleep } from '../dom/human'
 import {
   findByText,
   isDisplayed,
@@ -198,12 +198,7 @@ export class LinkedInAdapter implements SiteAdapter {
           continue
         }
 
-        const clickable =
-          card.querySelector<HTMLElement>('a[href*="/jobs/view/"]') ??
-          card.querySelector<HTMLElement>('.job-card-list__title') ??
-          card
-
-        await humanClick(clickable, ctx.signal)
+        await clickInPlace(cardTarget(card), ctx.signal)
 
         // Keyed on the text growing past a heading-sized stub, not merely on
         // an element existing: the pane mounts empty and fills in.
@@ -460,12 +455,7 @@ export class LinkedInAdapter implements SiteAdapter {
       return false
     }
 
-    const clickable =
-      card.querySelector<HTMLElement>('a[href*="/jobs/view/"]') ??
-      card.querySelector<HTMLElement>('.job-card-list__title') ??
-      card
-
-    await humanClick(clickable, ctx.signal)
+    await clickInPlace(cardTarget(card), ctx.signal)
 
     // The details pane is ready once an apply button for this job renders.
     const ready = await waitFor(() => this.findApplyButton(), {
@@ -943,6 +933,24 @@ export class LinkedInAdapter implements SiteAdapter {
       unfilled: summary.unanswered.map((f) => f.label).filter(Boolean),
     }
   }
+}
+
+/**
+ * What to click to bring a card into the details pane.
+ *
+ * Ordered by how likely the element is to be the one the site's own handler
+ * is bound to, not by whether it is a link: on LinkedIn the card's clickable
+ * region *is* an anchor, so there is no link-free target to prefer. Staying
+ * on the results page is `clickInPlace`'s job, and this picks the element
+ * most likely to make the pane update.
+ */
+function cardTarget(card: HTMLElement): HTMLElement {
+  return (
+    card.querySelector<HTMLElement>('.job-card-list__title--link, .job-card-container__link') ??
+    card.querySelector<HTMLElement>('.job-card-list__title') ??
+    card.querySelector<HTMLElement>('[data-job-id]') ??
+    card
+  )
 }
 
 /**
